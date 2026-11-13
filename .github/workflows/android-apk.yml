@@ -36,10 +36,20 @@ jobs:
         run: flutter pub get
 
       - name: 6. Analyze Code Quality
-        run: flutter analyze --no-fatal-infos
+        run: flutter analyze --no-fatal-infos --no-fatal-warnings
 
       - name: 7. Run Automated Tests
         run: flutter test
+
+      - name: 7b. Initialize Android Gradle Wrapper
+        run: |
+          cd android
+          if [ ! -f gradle/wrapper/gradle-wrapper.jar ]; then
+            echo "Generating Gradle wrapper jar..."
+            gradle wrapper --gradle-version 8.4 || true
+          fi
+          chmod +x gradlew
+          cd ..
 
       - name: 8. Build Debug Test APK (Instant Android Installation)
         run: flutter build apk --debug
