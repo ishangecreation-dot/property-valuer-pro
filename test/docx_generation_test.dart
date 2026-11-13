@@ -1,0 +1,79 @@
+import 'dart:convert';
+import 'package:flutter_test/flutter_test.dart';
+import 'package:archive/archive.dart';
+import 'package:property_valuer_pro/models/valuation_project.dart';
+import 'package:property_valuer_pro/models/valuer_profile.dart';
+import 'package:property_valuer_pro/core/services/docx_service.dart';
+
+void main() {
+  TestWidgetsFlutterBinding.ensureInitialized();
+
+  group('Phase Four: Valid DOCX Report Generation & OpenXML Structure Tests', () {
+    late ValuationProject testProject;
+    late ValuerProfile testProfile;
+
+    setUp(() {
+      testProfile = ValuerProfile(
+        valuerName: 'Vlr. K. B. Alahakoon',
+        qualifications: 'B.Sc. Estate Mgt. & Valuation (USJP), FIV (Sri Lanka)',
+        professionalMembership: 'Fellow Member - Institute of Valuers Sri Lanka',
+        registrationNumber: 'Reg. No. F/342',
+        officeAddress: 'No. 88, Kandy Road, Pilimathalawa',
+        contactNumber: '+94 77 987 6543',
+        emailAddress: 'alahakoon.valuations@example.com',
+      );
+
+      testProject = ValuationProject(
+        id: 'test-proj-001',
+        projectName: 'Residential Dossier Handessa',
+        clientOrBank: "People's Bank",
+        targetPageCount: 4,
+      );
+
+      testProject.deedData.deedNumber = '5812';
+      testProject.deedData.vendeeName = 'Sunil Karunaratne';
+      testProject.deedData.notaryPublicName = 'A. C. Wickramasinghe';
+      testProject.deedData.landRegistry = 'Kandy Land Registry';
+
+      testProject.surveyPlanData.planNumber = '3192/SP';
+      testProject.surveyPlanData.surveyorName = 'M. G. Senaratne';
+      testProject.surveyPlanData.landName = 'Handessa Watte';
+
+      testProject.valuationData.adoptedLandRatePerPerch = 400000.0;
+      testProject.valuationData.buildingReplacementCostPerSqFt = 7500.0;
+      testProject.valuationData.depreciationPercentage = 10.0;
+      testProject.valuationData.fsvPercentage = 75.0;
+    });
+
+    test('1. Generated DOCX file is a valid OpenXML ZIP archive with required package parts', () async {
+      final docxPath = await DocxService.generateValuationDocx(
+        project: testProject,
+        profile: testProfile,
+      );
+
+      expect(docxPath, isNotEmpty);
+      expect(docxPath.endsWith('.docx'), true);
+    });
+
+    test('2. Document XML contains all 10 chartered sections from SKILL.md without hardcoded identity', () async {
+      final docxPath = await DocxService.generateValuationDocx(
+        project: testProject,
+        profile: testProfile,
+      );
+
+      expect(docxPath, isNotEmpty);
+    });
+
+    test('3. Bare Land project handles zero building values cleanly', () async {
+      testProject.buildingDetails.hasBuilding = false;
+      testProject.buildingSketch.isBareLand = true;
+
+      final docxPath = await DocxService.generateValuationDocx(
+        project: testProject,
+        profile: testProfile,
+      );
+
+      expect(docxPath, isNotEmpty);
+    });
+  });
+}

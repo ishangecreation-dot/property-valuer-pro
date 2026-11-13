@@ -9,7 +9,7 @@ on:
 
 jobs:
   build:
-    name: Build Release APK
+    name: Build Test and Release APKs
     runs-on: ubuntu-latest
 
     steps:
@@ -41,27 +41,33 @@ jobs:
       - name: 7. Run Automated Tests
         run: flutter test
 
-      - name: 8. Build Universal Release APK
-        run: flutter build apk --release
+      - name: 8. Build Debug Test APK (Instant Android Installation)
+        run: flutter build apk --debug
 
-      - name: 9. Build ABI-Specific APKs (ARM64, ARM32, x86_64)
-        run: flutter build apk --release --split-per-abi
-
-      - name: 10. Verify Output APKs
+      - name: 9. Verify Debug Test APK
         run: |
           ls -la build/app/outputs/flutter-apk/
-          test -f build/app/outputs/flutter-apk/app-release.apk
+          test -f build/app/outputs/flutter-apk/app-debug.apk
+          echo "Debug APK size: $(stat -c %s build/app/outputs/flutter-apk/app-debug.apk) bytes"
 
-      - name: 11. Upload Universal APK Artifact
+      - name: 10. Upload Debug Test APK Artifact (Property-Valuer-Pro-Test-APK)
         uses: actions/upload-artifact@v4
         with:
-          name: PropertyValuerPro-Universal-Release-APK
-          path: build/app/outputs/flutter-apk/app-release.apk
+          name: Property-Valuer-Pro-Test-APK
+          path: build/app/outputs/flutter-apk/app-debug.apk
           retention-days: 30
 
-      - name: 12. Upload Split ABI APKs Artifacts
+      - name: 11. Build Release APK
+        run: flutter build apk --release
+
+      - name: 12. Verify Release APK
+        run: |
+          test -f build/app/outputs/flutter-apk/app-release.apk
+          echo "Release APK size: $(stat -c %s build/app/outputs/flutter-apk/app-release.apk) bytes"
+
+      - name: 13. Upload Universal Release APK Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: PropertyValuerPro-Split-ABI-APKs
-          path: build/app/outputs/flutter-apk/app-*-release.apk
+          name: Property-Valuer-Pro-Release-APK
+          path: build/app/outputs/flutter-apk/app-release.apk
           retention-days: 30
