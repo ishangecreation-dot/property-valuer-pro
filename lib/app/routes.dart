@@ -40,4 +40,3 @@ class AppRoutes {
     step10Success: (context) => const GenerationSuccessScreen(),
   };
 }
-

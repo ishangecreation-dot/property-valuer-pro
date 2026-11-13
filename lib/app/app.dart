@@ -16,4 +16,3 @@ class PropertyValuerProApp extends StatelessWidget {
     );
   }
 }
-
