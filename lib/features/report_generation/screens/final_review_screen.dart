@@ -6,7 +6,6 @@ import '../../../core/storage/storage_service.dart';
 import '../../../core/services/docx_service.dart';
 import '../../../core/services/monthly_usage_service.dart';
 import '../../../core/services/ad_service.dart';
-import '../../../core/services/entitlement_service.dart';
 import '../../../widgets/responsive_scaffold.dart';
 import '../../../widgets/custom_form_fields.dart';
 import '../../../widgets/monthly_limit_reached_dialog.dart';
