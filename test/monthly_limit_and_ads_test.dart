@@ -1,6 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:property_valuer_pro/core/constants/app_constants.dart';
 import 'package:property_valuer_pro/core/services/monthly_usage_service.dart';
 import 'package:property_valuer_pro/core/services/entitlement_service.dart';
 import 'package:property_valuer_pro/core/services/ad_service.dart';
