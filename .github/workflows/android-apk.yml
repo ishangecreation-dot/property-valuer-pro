@@ -28,9 +28,10 @@ jobs:
           java-version: '17'
           cache: 'gradle'
 
-      - name: 3. Set up Flutter SDK (Stable)
+      - name: 3. Set up Flutter SDK
         uses: subosito/flutter-action@v2
         with:
+          flutter-version: '3.24.5'
           channel: 'stable'
           cache: true
 
@@ -50,14 +51,14 @@ jobs:
       - name: 7b. Download Gradle Wrapper JAR and Permissions
         run: |
           mkdir -p android/gradle/wrapper
-          curl -sLo android/gradle/wrapper/gradle-wrapper.jar https://raw.githubusercontent.com/gradle/gradle/v8.7.0/gradle/wrapper/gradle-wrapper.jar
+          curl -sLo android/gradle/wrapper/gradle-wrapper.jar https://raw.githubusercontent.com/gradle/gradle/v8.4.0/gradle/wrapper/gradle-wrapper.jar
           test -f android/gradle/wrapper/gradle-wrapper.jar
           echo "Downloaded Gradle wrapper jar: $(stat -c %s android/gradle/wrapper/gradle-wrapper.jar) bytes"
           chmod +x android/gradlew
 
       - name: 8. Build Debug Test APK (Instant Android Installation)
         run: |
-          flutter build apk --debug --android-skip-build-dependency-validation -v > flutter_debug_build.log 2>&1 || {
+          flutter build apk --debug -v > flutter_debug_build.log 2>&1 || {
             BUILD_STATUS=$?
             echo "::error::Flutter debug build failed with code $BUILD_STATUS"
             echo "================ LAST 250 LINES OF BUILD LOG ================"
@@ -96,7 +97,7 @@ jobs:
 
       - name: 11. Build Release APK
         run: |
-          flutter build apk --release --android-skip-build-dependency-validation -v > flutter_release_build.log 2>&1 || {
+          flutter build apk --release -v > flutter_release_build.log 2>&1 || {
             BUILD_STATUS=$?
             echo "::error::Flutter release build failed with code $BUILD_STATUS"
             echo "================ LAST 250 LINES OF RELEASE BUILD LOG ================"
