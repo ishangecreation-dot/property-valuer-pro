@@ -6,6 +6,7 @@ import '../../../core/storage/storage_service.dart';
 import '../../../core/services/docx_service.dart';
 import '../../../core/services/monthly_usage_service.dart';
 import '../../../core/services/ad_service.dart';
+import '../../../core/services/entitlement_service.dart';
 import '../../../widgets/responsive_scaffold.dart';
 import '../../../widgets/custom_form_fields.dart';
 import '../../../widgets/monthly_limit_reached_dialog.dart';
@@ -400,7 +401,7 @@ class _FinalReviewScreenState extends State<FinalReviewScreen> {
             onPressed: _showLimitReachedPopup,
             icon: const Icon(Icons.lock, size: 20),
             label: const Text(
-              'Monthly Limit Reached  Upgrade to Paid Version',
+              'Monthly Limit Reached – Upgrade to Paid Version',
               textAlign: TextAlign.center,
               style: TextStyle(fontSize: 14, fontWeight: FontWeight.w700),
             ),
