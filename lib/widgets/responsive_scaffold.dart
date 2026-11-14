@@ -68,4 +68,68 @@ class ResponsiveWorkflowScaffold extends StatelessWidget {
             child: Column(
               children: [
                 // Mobile Top Workflow Progress Header
-                if (!isTablet && currentStep > 1)\n                  WorkflowHeader(\n                    currentStep: currentStep,\n                    onStepTapped: (step) => _navigateToStep(context, step),\n                  ),\n\n                // Screen Content\n                Expanded(child: body),\n\n                // Non-intrusive bottom banner advertisement placeholder\n                if (showAdBanner) const AdBannerPlaceholder(),\n\n                // Bottom Navigation Bar (Back & Next CTA)\n                if (showBottomNav)\n                  Container(\n                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),\n                    decoration: const BoxDecoration(\n                      color: Colors.white,\n                      border: Border(top: BorderSide(color: AppColors.borders)),\n                      boxShadow: [\n                        BoxShadow(\n                          color: Color(0x0D16324F),\n                          blurRadius: 10,\n                          offset: Offset(0, -2),\n                        ),\n                      ],\n                    ),\n                    child: SafeArea(\n                      child: Row(\n                        children: [\n                          if (onBack != null) ...[\n                            Expanded(\n                              flex: 1,\n                              child: OutlinedButton.icon(\n                                onPressed: onBack,\n                                icon: const Icon(Icons.arrow_back, size: 18),\n                                label: const Text('Back'),\n                              ),\n                            ),\n                            const SizedBox(width: 12),\n                          ],\n                          if (onNext != null)\n                            Expanded(\n                              flex: 2,\n                              child: ElevatedButton.icon(\n                                onPressed: isNextEnabled ? onNext : null,\n                                icon: const Icon(Icons.arrow_forward, size: 18),\n                                label: Text(nextLabel),\n                                style: ElevatedButton.styleFrom(\n                                  backgroundColor: AppColors.primaryActionTeal,\n                                ),\n                              ),\n                            ),\n                        ],\n                      ),\n                    ),\n                  ),\n              ],\n            ),\n          ),\n        ],\n      ),\n    );\n  }\n}\n
+                if (!isTablet && currentStep > 1)
+                  WorkflowHeader(
+                    currentStep: currentStep,
+                    onStepTapped: (step) => _navigateToStep(context, step),
+                  ),
+
+                // Screen Content
+                Expanded(child: body),
+
+                // Non-intrusive bottom banner advertisement placeholder
+                if (showAdBanner) const AdBannerPlaceholder(),
+
+                // Bottom Navigation Bar (Back & Next CTA)
+                if (showBottomNav)
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                    decoration: const BoxDecoration(
+                      color: Colors.white,
+                      border: Border(top: BorderSide(color: AppColors.borders)),
+                      boxShadow: [
+                        BoxShadow(
+                          color: Color(0x0D16324F),
+                          blurRadius: 10,
+                          offset: Offset(0, -2),
+                        ),
+                      ],
+                    ),
+                    child: SafeArea(
+                      child: Row(
+                        children: [
+                          if (onBack != null) ...[
+                            Expanded(
+                              flex: 1,
+                              child: OutlinedButton.icon(
+                                onPressed: onBack,
+                                icon: const Icon(Icons.arrow_back, size: 18),
+                                label: const Text('Back'),
+                              ),
+                            ),
+                            const SizedBox(width: 12),
+                          ],
+                          if (onNext != null)
+                            Expanded(
+                              flex: 2,
+                              child: ElevatedButton.icon(
+                                onPressed: isNextEnabled ? onNext : null,
+                                icon: const Icon(Icons.arrow_forward, size: 18),
+                                label: Text(nextLabel),
+                                style: ElevatedButton.styleFrom(
+                                  backgroundColor: AppColors.primaryActionTeal,
+                                ),
+                              ),
+                            ),
+                        ],
+                      ),
+                    ),
+                  ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
