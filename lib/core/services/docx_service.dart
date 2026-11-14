@@ -33,12 +33,7 @@ class DocxService {
     final docxBytes = _buildDocxPackage(project, profile);
 
     // Save to device storage
-    Directory outputDir;
-    try {
-      outputDir = await getApplicationDocumentsDirectory();
-    } catch (_) {
-      outputDir = Directory.systemTemp;
-    }
+    final outputDir = await getApplicationDocumentsDirectory();
     final sanitizedTitle = project.projectName.replaceAll(RegExp(r'[^a-zA-Z0-9_-]'), '_');
     final fileName = 'Valuation_Report_${sanitizedTitle}_${DateTime.now().millisecondsSinceEpoch}.docx';
     final file = File('${outputDir.path}/$fileName');
