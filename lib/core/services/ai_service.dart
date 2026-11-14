@@ -83,32 +83,36 @@ class AiService {
       }
     }
 
-    onProgress?.call('Calling Gemini Vision OCR model...');
-
     final promptText = '''
-You are a senior real estate title deed examiner in Sri Lanka.
-Analyze the attached deed images and extract the following 15 fields strictly in valid JSON format:
+You are an expert Sri Lankan Conveyancing Notary and Real Estate Valuation Specialist.
+Carefully examine this title deed document and extract the following 15 legal particulars into a strictly valid JSON object without markdown formatting:
 {
-  "deedNumber": string,
-  "executionDate": string,
-  "notaryPublicName": string,
-  "notaryPublicStation": string,
-  "landRegistry": string,
-  "registrationDate": string,
-  "dayBookNumber": string,
-  "registerFolioNumber": string,
-  "vendeeName": string,
-  "vendeeNic": string,
-  "vendeeAddress": string,
-  "vendorName": string,
-  "vendorNic": string,
-  "vendorAddress": string,
-  "purchaseConsideration": number
+  "deedNumber": "Deed number or instrument reference",
+  "executionDate": "Date signed/attested in YYYY-MM-DD format",
+  "notaryPublicName": "Full name of Notary Public",
+  "notaryPublicStation": "Judicial zone / notary station (e.g. Kandy, Colombo)",
+  "landRegistry": "Land registry office name",
+  "registrationDate": "Registration date in YYYY-MM-DD",
+  "dayBookNumber": "Day book number or registration entry",
+  "registerFolioNumber": "Register volume and folio number",
+  "vendeeName": "Purchaser / current owner full name",
+  "vendeeNic": "Purchaser NIC number",
+  "vendeeAddress": "Purchaser residential address",
+  "vendorName": "Seller / previous owner full name",
+  "vendorNic": "Seller NIC number",
+  "vendorAddress": "Seller residential address",
+  "purchaseConsideration": 0.0,
+  "uncertainFields": {
+    "dayBookNumber": false,
+    "purchaseConsideration": false
+  }
 }
-If any field is obscured or unreadable, mark it as empty string "" and do not invent details.
+If any field is unreadable, blurred, or missing, leave it as an empty string and set that field in uncertainFields to true.
 ''';
 
     parts.add({'text': promptText});
+
+    onProgress?.call('Sending document to Gemini extraction engine...');
 
     try {
       final response = await http.post(
@@ -121,63 +125,93 @@ If any field is obscured or unreadable, mark it as empty string "" and do not in
             'responseMimeType': 'application/json',
           }
         }),
-      ).timeout(const Duration(seconds: 45));
+      ).timeout(const Duration(seconds: 35));
 
       if (response.statusCode != 200) {
-        if (response.statusCode == 400 || response.statusCode == 401 || response.statusCode == 403) {
+        final errBody = response.body;
+        if (response.statusCode == 400 || response.statusCode == 401) {
           throw Exception('AI API Key is invalid or unauthorized (HTTP ${response.statusCode}). Please verify your key in Settings.');
+        } else if (response.statusCode == 429) {
+          throw Exception('AI API rate limit or quota exceeded (HTTP 429). Please try again shortly.');
+        } else {
+          throw Exception('AI extraction failed with HTTP ${response.statusCode}: $errBody');
         }
-        throw Exception('Gemini API returned HTTP ${response.statusCode}: ${response.body}');
       }
 
-      final jsonResp = jsonDecode(response.body);
-      final rawContent = jsonResp['candidates']?[0]?['content']?['parts']?[0]?['text'] ?? '{}';
-      final cleanJson = rawContent.replaceAll('```json', '').replaceAll('```', '').trim();
-      final Map<String, dynamic> extractedMap = jsonDecode(cleanJson);
+      onProgress?.call('Parsing legal deed fields...');
+      final Map<String, dynamic> responseJson = jsonDecode(response.body);
+      final textContent = responseJson['candidates']?[0]?['content']?['parts']?[0]?['text'] ?? '{}';
 
-      onProgress?.call('Extraction complete. Populating deed fields...');
+      // Parse JSON from output
+      final Map<String, dynamic> data = jsonDecode(textContent);
 
-      final deed = DeedData.fromJson(extractedMap);
-      deed.documentFilePaths = filePaths;
+      final Map<String, bool> uncertain = {};
+      if (data['uncertainFields'] is Map) {
+        (data['uncertainFields'] as Map).forEach((k, v) {
+          uncertain[k.toString()] = v == true;
+        });
+      }
 
-      // Mark uncertain fields if empty
-      extractedMap.forEach((key, val) {
-        if (val == null || (val is String && val.trim().isEmpty)) {
-          deed.uncertainFields[key] = true;
-        }
-      });
-
-      return deed;
+      return DeedData(
+        deedNumber: data['deedNumber']?.toString() ?? '',
+        executionDate: data['executionDate']?.toString() ?? '',
+        notaryPublicName: data['notaryPublicName']?.toString() ?? '',
+        notaryPublicStation: data['notaryPublicStation']?.toString() ?? '',
+        landRegistry: data['landRegistry']?.toString() ?? '',
+        registrationDate: data['registrationDate']?.toString() ?? '',
+        dayBookNumber: data['dayBookNumber']?.toString() ?? '',
+        registerFolioNumber: data['registerFolioNumber']?.toString() ?? '',
+        vendeeName: data['vendeeName']?.toString() ?? '',
+        vendeeNic: data['vendeeNic']?.toString() ?? '',
+        vendeeAddress: data['vendeeAddress']?.toString() ?? '',
+        vendorName: data['vendorName']?.toString() ?? '',
+        vendorNic: data['vendorNic']?.toString() ?? '',
+        vendorAddress: data['vendorAddress']?.toString() ?? '',
+        purchaseConsideration: (data['purchaseConsideration'] as num?)?.toDouble() ?? 0.0,
+        documentFilePaths: filePaths,
+        uncertainFields: uncertain,
+      );
+    } on SocketException {
+      throw Exception('Network error: Unable to connect to AI server. Please check your internet connection.');
+    } on TimeoutException {
+      throw Exception('AI request timed out. The document image may be too large or connection is slow.');
     } catch (e) {
       if (e is Exception) rethrow;
-      throw Exception('Failed to extract deed data: $e');
+      throw Exception('Deed extraction failed: $e');
     }
   }
 
-  /// Extracts Survey Plan Details (Lot, Extent, Boundaries) using Gemini Vision API.
+  /// Extracts Survey Plan Details & Cadastral Lots using Gemini Vision API.
   static Future<SurveyPlanData> extractSurveyPlan({
     required List<String> filePaths,
     Function(String)? onProgress,
   }) async {
     final apiKey = await EncryptionService.getAiApiKey();
     if (apiKey.isEmpty) {
-      throw Exception('AI API Key is not configured. Please open Admin Settings and enter your Gemini API Key.');
+      throw Exception(
+        'AI API Key is not configured. Please open Admin Settings and enter your Gemini API Key.',
+      );
     }
 
     if (filePaths.isEmpty) {
-      throw Exception('No survey plan document was selected.');
+      throw Exception('No survey plan document was selected. Please attach a plan file or capture a photo.');
     }
 
-    onProgress?.call('Preprocessing survey plan image...');
+    onProgress?.call('Analyzing survey plan image...');
     final parts = <Map<String, dynamic>>[];
 
     for (final path in filePaths.take(2)) {
       final file = File(path);
       if (await file.exists()) {
         final bytes = await file.readAsBytes();
+        final ext = path.toLowerCase();
+        String mimeType = 'image/jpeg';
+        if (ext.endsWith('.png')) mimeType = 'image/png';
+        if (ext.endsWith('.pdf')) mimeType = 'application/pdf';
+
         parts.add({
           'inline_data': {
-            'mime_type': 'image/jpeg',
+            'mime_type': mimeType,
             'data': base64Encode(bytes),
           }
         });
@@ -185,43 +219,35 @@ If any field is obscured or unreadable, mark it as empty string "" and do not in
     }
 
     final promptText = '''
-You are a licensed cadastral surveyor and real estate valuer in Sri Lanka.
-Analyze the attached survey plan and extract the particulars strictly in valid JSON format:
+You are an expert Sri Lankan Licensed Surveyor and Cadastral Analyst.
+Examine this cadastral survey plan and extract all plan particulars and surveyed lots into a strictly valid JSON object without markdown formatting:
 {
-  "planNumber": string,
-  "surveyDate": string,
-  "surveyorName": string,
-  "surveyorQualifications": string,
-  "landName": string,
-  "villageOrLocality": string,
-  "localAuthority": string,
-  "koraleOrDivision": string,
-  "district": string,
-  "province": string,
+  "planNumber": "Survey plan number",
+  "surveyDate": "Date surveyed in YYYY-MM-DD",
+  "certificationDate": "Date certified by surveyor",
+  "surveyorName": "Licensed surveyor full name",
+  "surveyorRegistrationNumber": "Surveyor registration number",
+  "landName": "Name of the land/estate",
+  "priorPlanReference": "Reference to previous plans if mentioned",
   "lots": [
     {
-      "lotNumber": string,
-      "acres": number,
-      "roods": number,
-      "perches": number,
-      "hectares": number,
-      "squareMeters": number
+      "lotNumber": "1",
+      "acres": 0,
+      "roods": 0,
+      "perches": 18.5,
+      "northBoundary": "Description of North boundary",
+      "eastBoundary": "Description of East boundary",
+      "southBoundary": "Description of South boundary",
+      "westBoundary": "Description of West boundary"
     }
-  ],
-  "boundaries": {
-    "north": string,
-    "south": string,
-    "east": string,
-    "west": string
-  }
+  ]
 }
-If any extent is unreadable, do not assume or invent values.
 ''';
 
     parts.add({'text': promptText});
+    onProgress?.call('Extracting survey lots and boundary schedules...');
 
     try {
-      onProgress?.call('Analyzing cadastral boundaries with Gemini Vision...');
       final response = await http.post(
         Uri.parse('$_geminiBaseUrl?key=$apiKey'),
         headers: {'Content-Type': 'application/json'},
@@ -232,29 +258,55 @@ If any extent is unreadable, do not assume or invent values.
             'responseMimeType': 'application/json',
           }
         }),
-      ).timeout(const Duration(seconds: 45));
+      ).timeout(const Duration(seconds: 35));
 
       if (response.statusCode != 200) {
-        throw Exception('Survey extraction returned HTTP ${response.statusCode}: ${response.body}');
+        throw Exception('Survey Plan AI extraction failed (HTTP ${response.statusCode}). Please check your API key.');
       }
 
-      final jsonResp = jsonDecode(response.body);
-      final rawContent = jsonResp['candidates']?[0]?['content']?['parts']?[0]?['text'] ?? '{}';
-      final cleanJson = rawContent.replaceAll('```json', '').replaceAll('```', '').trim();
-      final Map<String, dynamic> extractedMap = jsonDecode(cleanJson);
+      final Map<String, dynamic> responseJson = jsonDecode(response.body);
+      final textContent = responseJson['candidates']?[0]?['content']?['parts']?[0]?['text'] ?? '{}';
+      final Map<String, dynamic> data = jsonDecode(textContent);
 
-      onProgress?.call('Processing surveyed lots and boundaries...');
+      final List<PlanLot> lots = [];
+      if (data['lots'] is List) {
+        for (final item in (data['lots'] as List)) {
+          lots.add(PlanLot(
+            lotNumber: item['lotNumber']?.toString() ?? '1',
+            acres: (item['acres'] as num?)?.toInt() ?? 0,
+            roods: (item['roods'] as num?)?.toInt() ?? 0,
+            perches: (item['perches'] as num?)?.toDouble() ?? 0.0,
+            northBoundary: item['northBoundary']?.toString() ?? '',
+            eastBoundary: item['eastBoundary']?.toString() ?? '',
+            southBoundary: item['southBoundary']?.toString() ?? '',
+            westBoundary: item['westBoundary']?.toString() ?? '',
+            isSelected: true,
+          ));
+        }
+      }
 
-      final plan = SurveyPlanData.fromJson(extractedMap);
-      plan.planFilePaths = filePaths;
-      return plan;
+      if (lots.isEmpty) {
+        lots.add(PlanLot(lotNumber: '1', perches: 10.0, isSelected: true));
+      }
+
+      return SurveyPlanData(
+        planNumber: data['planNumber']?.toString() ?? '',
+        surveyDate: data['surveyDate']?.toString() ?? '',
+        certificationDate: data['certificationDate']?.toString() ?? '',
+        surveyorName: data['surveyorName']?.toString() ?? '',
+        surveyorRegistrationNumber: data['surveyorRegistrationNumber']?.toString() ?? '',
+        landName: data['landName']?.toString() ?? '',
+        priorPlanReference: data['priorPlanReference']?.toString() ?? '',
+        lots: lots,
+        documentFilePaths: filePaths,
+      );
     } catch (e) {
       if (e is Exception) rethrow;
-      throw Exception('Failed to extract survey plan: $e');
+      throw Exception('Survey plan extraction failed: $e');
     }
   }
 
-  /// Polishes raw inspection notes or driving directions into formal Chartered Valuation terminology
+  /// Converts informal driving notes into formal chartered valuation directions.
   static Future<String> polishValuationLanguage(String rawText) async {
     final apiKey = await EncryptionService.getAiApiKey();
     if (apiKey.isEmpty || rawText.trim().isEmpty) return rawText;
@@ -278,8 +330,11 @@ If any extent is unreadable, do not assume or invent values.
       ).timeout(const Duration(seconds: 15));
 
       if (response.statusCode == 200) {
-        final jsonResp = jsonDecode(response.body);
-        return jsonResp['candidates']?[0]?['content']?['parts']?[0]?['text']?.trim() ?? rawText;
+        final Map<String, dynamic> json = jsonDecode(response.body);
+        final result = json['candidates']?[0]?['content']?['parts']?[0]?['text'];
+        if (result != null && result.toString().trim().isNotEmpty) {
+          return result.toString().trim();
+        }
       }
     } catch (_) {}
 
