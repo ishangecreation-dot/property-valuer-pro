@@ -154,21 +154,33 @@ class StorageService {
 
   static Future<void> resetMonthlyReportCount() async {
     final prefs = await SharedPreferences.getInstance();
+    final currentMonth = getCurrentYearMonth();
+    await prefs.setString(_keyUsageMonth, currentMonth);
     await prefs.setInt(_keyUsageCount, 0);
   }
 
-  static Future<void> setMonthlyReportLimit(int newLimit) async {
+  static Future<void> setMonthlyReportLimit(int limit) async {
     final prefs = await SharedPreferences.getInstance();
-    await prefs.setInt(_keyUsageLimit, newLimit);
+    await prefs.setInt(_keyUsageLimit, limit);
+  }
+
+  static Future<bool> isPremiumTier() async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getBool(_keyIsPremium) ?? false;
+  }
+
+  static Future<void> setPremiumTier(bool isPremium) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool(_keyIsPremium, isPremium);
   }
 
   // ==========================================
-  // Advertising Configuration & Controls
+  // Advertising & Meta Audience Network Settings
   // ==========================================
 
-  static Future<bool> areAdsEnabled() async {
+  static Future<bool> isAdsEnabled() async {
     final prefs = await SharedPreferences.getInstance();
-    return prefs.getBool(_keyAdsEnabled) ?? AppConstants.defaultAdsEnabled;
+    return prefs.getBool(_keyAdsEnabled) ?? false;
   }
 
   static Future<void> setAdsEnabled(bool enabled) async {
@@ -176,34 +188,34 @@ class StorageService {
     await prefs.setBool(_keyAdsEnabled, enabled);
   }
 
-  static Future<String> getAdProvider() async {
+  static Future<String> getActiveAdProvider() async {
     final prefs = await SharedPreferences.getInstance();
-    return prefs.getString(_keyAdProvider) ?? AppConstants.defaultAdProvider;
+    return prefs.getString(_keyAdProvider) ?? AppConstants.adProviderMeta;
   }
 
-  static Future<void> setAdProvider(String provider) async {
+  static Future<void> setActiveAdProvider(String provider) async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString(_keyAdProvider, provider);
   }
 
-  static Future<String> getMetaBannerPlacementId() async {
-    final prefs = await SharedPreferences.getInstance();
-    return prefs.getString(_keyMetaBannerPlacementId) ?? AppConstants.metaAudienceBannerPlacementId;
-  }
-
-  static Future<void> setMetaBannerPlacementId(String placementId) async {
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setString(_keyMetaBannerPlacementId, placementId);
-  }
-
   static Future<String> getMetaInterstitialPlacementId() async {
     final prefs = await SharedPreferences.getInstance();
-    return prefs.getString(_keyMetaInterstitialPlacementId) ?? AppConstants.metaAudienceInterstitialPlacementId;
+    return prefs.getString(_keyMetaInterstitialPlacementId) ?? AppConstants.defaultMetaInterstitialPlacementId;
   }
 
-  static Future<void> setMetaInterstitialPlacementId(String placementId) async {
+  static Future<void> setMetaInterstitialPlacementId(String id) async {
     final prefs = await SharedPreferences.getInstance();
-    await prefs.setString(_keyMetaInterstitialPlacementId, placementId);
+    await prefs.setString(_keyMetaInterstitialPlacementId, id);
+  }
+
+  static Future<String> getMetaBannerPlacementId() async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getString(_keyMetaBannerPlacementId) ?? AppConstants.defaultMetaBannerPlacementId;
+  }
+
+  static Future<void> setMetaBannerPlacementId(String id) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(_keyMetaBannerPlacementId, id);
   }
 
   static Future<bool> isInterstitialEnabled() async {
