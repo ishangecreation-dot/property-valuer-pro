@@ -40,6 +40,11 @@ class StorageService {
     }
   }
 
+  static Future<void> clearProfile() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.remove(_keyProfile);
+  }
+
   // Projects Persistence
   static Future<void> saveProjects(List<ValuationProject> projects) async {
     final prefs = await SharedPreferences.getInstance();
@@ -149,33 +154,21 @@ class StorageService {
 
   static Future<void> resetMonthlyReportCount() async {
     final prefs = await SharedPreferences.getInstance();
-    final currentMonth = getCurrentYearMonth();
-    await prefs.setString(_keyUsageMonth, currentMonth);
     await prefs.setInt(_keyUsageCount, 0);
   }
 
-  static Future<void> setMonthlyReportLimit(int limit) async {
+  static Future<void> setMonthlyReportLimit(int newLimit) async {
     final prefs = await SharedPreferences.getInstance();
-    await prefs.setInt(_keyUsageLimit, limit);
-  }
-
-  static Future<bool> isPremiumTier() async {
-    final prefs = await SharedPreferences.getInstance();
-    return prefs.getBool(_keyIsPremium) ?? false;
-  }
-
-  static Future<void> setPremiumTier(bool isPremium) async {
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setBool(_keyIsPremium, isPremium);
+    await prefs.setInt(_keyUsageLimit, newLimit);
   }
 
   // ==========================================
-  // Advertising & Meta Audience Network Settings
+  // Advertising Configuration & Controls
   // ==========================================
 
-  static Future<bool> isAdsEnabled() async {
+  static Future<bool> areAdsEnabled() async {
     final prefs = await SharedPreferences.getInstance();
-    return prefs.getBool(_keyAdsEnabled) ?? false;
+    return prefs.getBool(_keyAdsEnabled) ?? AppConstants.defaultAdsEnabled;
   }
 
   static Future<void> setAdsEnabled(bool enabled) async {
@@ -183,34 +176,34 @@ class StorageService {
     await prefs.setBool(_keyAdsEnabled, enabled);
   }
 
-  static Future<String> getActiveAdProvider() async {
+  static Future<String> getAdProvider() async {
     final prefs = await SharedPreferences.getInstance();
-    return prefs.getString(_keyAdProvider) ?? AppConstants.adProviderMeta;
+    return prefs.getString(_keyAdProvider) ?? AppConstants.defaultAdProvider;
   }
 
-  static Future<void> setActiveAdProvider(String provider) async {
+  static Future<void> setAdProvider(String provider) async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString(_keyAdProvider, provider);
   }
 
-  static Future<String> getMetaInterstitialPlacementId() async {
-    final prefs = await SharedPreferences.getInstance();
-    return prefs.getString(_keyMetaInterstitialPlacementId) ?? AppConstants.defaultMetaInterstitialPlacementId;
-  }
-
-  static Future<void> setMetaInterstitialPlacementId(String id) async {
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setString(_keyMetaInterstitialPlacementId, id);
-  }
-
   static Future<String> getMetaBannerPlacementId() async {
     final prefs = await SharedPreferences.getInstance();
-    return prefs.getString(_keyMetaBannerPlacementId) ?? AppConstants.defaultMetaBannerPlacementId;
+    return prefs.getString(_keyMetaBannerPlacementId) ?? AppConstants.metaAudienceBannerPlacementId;
   }
 
-  static Future<void> setMetaBannerPlacementId(String id) async {
+  static Future<void> setMetaBannerPlacementId(String placementId) async {
     final prefs = await SharedPreferences.getInstance();
-    await prefs.setString(_keyMetaBannerPlacementId, id);
+    await prefs.setString(_keyMetaBannerPlacementId, placementId);
+  }
+
+  static Future<String> getMetaInterstitialPlacementId() async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getString(_keyMetaInterstitialPlacementId) ?? AppConstants.metaAudienceInterstitialPlacementId;
+  }
+
+  static Future<void> setMetaInterstitialPlacementId(String placementId) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(_keyMetaInterstitialPlacementId, placementId);
   }
 
   static Future<bool> isInterstitialEnabled() async {

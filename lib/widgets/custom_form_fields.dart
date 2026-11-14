@@ -93,6 +93,10 @@ class LabeledTextField extends StatelessWidget {
   final TextInputType keyboardType;
   final int maxLines;
   final bool isUncertain;
+  final bool isRequired;
+  final Widget? prefixIcon;
+  final Widget? suffixIcon;
+  final String? Function(String?)? validator;
 
   const LabeledTextField({
     Key? key,
@@ -104,6 +108,10 @@ class LabeledTextField extends StatelessWidget {
     this.keyboardType = TextInputType.text,
     this.maxLines = 1,
     this.isUncertain = false,
+    this.isRequired = false,
+    this.prefixIcon,
+    this.suffixIcon,
+    this.validator,
   }) : super(key: key);
 
   @override
@@ -116,13 +124,27 @@ class LabeledTextField extends StatelessWidget {
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              Text(
-                label,
-                style: const TextStyle(
-                  fontSize: 14,
-                  fontWeight: FontWeight.w600,
-                  color: AppColors.mainText,
-                ),
+              Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    label,
+                    style: const TextStyle(
+                      fontSize: 14,
+                      fontWeight: FontWeight.w600,
+                      color: AppColors.mainText,
+                    ),
+                  ),
+                  if (isRequired)
+                    const Text(
+                      ' *',
+                      style: TextStyle(
+                        fontSize: 14,
+                        fontWeight: FontWeight.bold,
+                        color: AppColors.error,
+                      ),
+                    ),
+                ],
               ),
               if (isUncertain)
                 Container(
@@ -152,9 +174,13 @@ class LabeledTextField extends StatelessWidget {
             onChanged: onChanged,
             keyboardType: keyboardType,
             maxLines: maxLines,
+            validator: validator,
             style: const TextStyle(fontSize: 15, color: AppColors.mainText),
             decoration: InputDecoration(
               hintText: hint,
+              hintStyle: const TextStyle(color: AppColors.secondaryText, fontSize: 14),
+              prefixIcon: prefixIcon,
+              suffixIcon: suffixIcon,
               fillColor: isUncertain ? const Color(0xFFFFFBEB) : Colors.white,
               focusedBorder: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(8),
@@ -163,6 +189,47 @@ class LabeledTextField extends StatelessWidget {
                   width: 2,
                 ),
               ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class ReadOnlyValueField extends StatelessWidget {
+  final String label;
+  final String value;
+  final Color? valueColor;
+
+  const ReadOnlyValueField({
+    Key? key,
+    required this.label,
+    required this.value,
+    this.valueColor,
+  }) : super(key: key);
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 12.0),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            label,
+            style: const TextStyle(
+              fontSize: 13,
+              color: AppColors.secondaryText,
+            ),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            value,
+            style: TextStyle(
+              fontSize: 15,
+              fontWeight: FontWeight.w600,
+              color: valueColor ?? AppColors.mainText,
             ),
           ),
         ],
