@@ -24,8 +24,8 @@ if (flutterVersionName == null) {
 
 android {
     namespace "com.propertyvaluerpro.app"
-    compileSdkVersion 34
-    ndkVersion flutter.ndkVersion
+    compileSdk = 34
+    ndkVersion = flutter.ndkVersion
 
     compileOptions {
         sourceCompatibility JavaVersion.VERSION_17
@@ -42,8 +42,8 @@ android {
 
     defaultConfig {
         applicationId "com.propertyvaluerpro.app"
-        minSdkVersion 23
-        targetSdkVersion 34
+        minSdk = 23
+        targetSdk = 34
         versionCode flutterVersionCode.toInteger()
         versionName flutterVersionName
         multiDexEnabled true
