@@ -18,7 +18,7 @@
     <application
         android:label="Property Valuer Pro"
         android:name="${applicationName}"
-        android:icon="@mipmap/ic_launcher"
+        android:icon="@drawable/ic_launcher"
         android:allowBackup="false"
         android:requestLegacyExternalStorage="true"
         android:usesCleartextTraffic="false">
