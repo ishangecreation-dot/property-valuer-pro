@@ -32,7 +32,7 @@ class _AdminSettingsModalState extends State<AdminSettingsModal> {
   final TextEditingController _apiKeyController = TextEditingController();
   final TextEditingController _metaPlacementIdController = TextEditingController();
 
-  String _selectedProvider = 'Gemini 3.8 Flash';
+  String _selectedProvider = 'Gemini 3.1 Flash-Lite';
   String _selectedAdProvider = AdService.activeAdProvider;
   bool _isTesting = false;
   String? _testMessage;
@@ -496,7 +496,7 @@ class _AdminSettingsModalState extends State<AdminSettingsModal> {
                     isDense: true,
                   ),
                   items: const [
-                    DropdownMenuItem(value: 'Gemini 3.8 Flash', child: Text('Gemini 3.8 Flash (Recommended)')),
+                    DropdownMenuItem(value: 'Gemini 3.1 Flash-Lite', child: Text('Gemini 3.1 Flash-Lite (Recommended)')),
                     DropdownMenuItem(value: 'Gemini 3.5 Flash', child: Text('Gemini 3.5 Flash')),
                     DropdownMenuItem(value: 'OpenAI GPT-4o', child: Text('OpenAI GPT-4o')),
                     DropdownMenuItem(value: 'Claude 3.5 Sonnet', child: Text('Claude 3.5 Sonnet')),

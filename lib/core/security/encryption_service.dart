@@ -110,9 +110,9 @@ class EncryptionService {
   static Future<String> getAiProvider() async {
     try {
       final prefs = await SharedPreferences.getInstance();
-      return prefs.getString(_keyAiProvider) ?? 'Gemini 3.8 Flash';
+      return prefs.getString(_keyAiProvider) ?? 'Gemini 3.1 Flash-Lite';
     } catch (_) {
-      return 'Gemini 3.8 Flash';
+      return 'Gemini 3.1 Flash-Lite';
     }
   }
 }

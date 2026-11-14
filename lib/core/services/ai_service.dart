@@ -9,8 +9,30 @@ import '../../models/survey_plan_data.dart';
 /// Real AI Document Extraction Service powered by Gemini / OpenAI APIs.
 /// Strictly parses real documents and does NOT silently substitute hardcoded sample data.
 class AiService {
-  static const String _geminiBaseUrl =
-      'https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent';
+  static const String _geminiApiRoot =
+      'https://generativelanguage.googleapis.com/v1beta/models/';
+
+  /// The Gemini model this build targets — the same model the n8n
+  /// valuation workflow uses.
+  static const String _defaultModelId = 'gemini-3.1-flash-lite';
+
+  /// Admin-panel "AI Engine Model" labels mapped to Gemini model ids.
+  static const Map<String, String> _providerModelIds = {
+    'Gemini 3.1 Flash-Lite': 'gemini-3.1-flash-lite',
+    'Gemini 3.8 Flash': 'gemini-3.8-flash',
+    'Gemini 3.5 Flash': 'gemini-3.5-flash',
+  };
+
+  /// Resolves the generateContent endpoint for the provider saved in Admin
+  /// Settings. Falls back to [_defaultModelId] when the saved label has no
+  /// explicit mapping (e.g. OpenAI/Claude/custom entries), so those keep
+  /// working over the Gemini transport instead of silently hitting a
+  /// retired hardcoded model.
+  static Future<String> _endpoint() async {
+    final provider = await EncryptionService.getAiProvider();
+    final model = _providerModelIds[provider] ?? _defaultModelId;
+    return '$_geminiApiRoot$model:generateContent';
+  }
 
   /// Optional mock hook for automated unit tests
   static bool? testConnectionOverride;
@@ -25,8 +47,9 @@ class AiService {
     if (apiKey.isEmpty) return false;
 
     try {
+      final url = '${await _endpoint()}?key=$apiKey';
       final response = await http.post(
-        Uri.parse('$_geminiBaseUrl?key=$apiKey'),
+        Uri.parse(url),
         headers: {'Content-Type': 'application/json'},
         body: jsonEncode({
           'contents': [
@@ -115,8 +138,9 @@ If any field is unreadable, blurred, or missing, leave it as an empty string and
     onProgress?.call('Sending document to Gemini extraction engine...');
 
     try {
+      final url = '${await _endpoint()}?key=$apiKey';
       final response = await http.post(
-        Uri.parse('$_geminiBaseUrl?key=$apiKey'),
+        Uri.parse(url),
         headers: {'Content-Type': 'application/json'},
         body: jsonEncode({
           'contents': [{'parts': parts}],
@@ -248,8 +272,9 @@ Examine this cadastral survey plan and extract all plan particulars and surveyed
     onProgress?.call('Extracting survey lots and boundary schedules...');
 
     try {
+      final url = '${await _endpoint()}?key=$apiKey';
       final response = await http.post(
-        Uri.parse('$_geminiBaseUrl?key=$apiKey'),
+        Uri.parse(url),
         headers: {'Content-Type': 'application/json'},
         body: jsonEncode({
           'contents': [{'parts': parts}],
@@ -312,8 +337,9 @@ Examine this cadastral survey plan and extract all plan particulars and surveyed
     if (apiKey.isEmpty || rawText.trim().isEmpty) return rawText;
 
     try {
+      final url = '${await _endpoint()}?key=$apiKey';
       final response = await http.post(
-        Uri.parse('$_geminiBaseUrl?key=$apiKey'),
+        Uri.parse(url),
         headers: {'Content-Type': 'application/json'},
         body: jsonEncode({
           'contents': [
