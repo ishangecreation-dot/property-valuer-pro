@@ -89,9 +89,7 @@ class _MonthlyLimitReachedDialogState extends State<MonthlyLimitReachedDialog> {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const Text(
-              'You have reached your monthly report generation limit. Upgrade to the Paid Version to generate more reports.',
+          children: [\n            const Text(\n              'You have reached your monthly report generation limit. Upgrade to the Paid Version to generate more reports.',
               style: TextStyle(
                 fontSize: 13.5,
                 color: AppColors.primaryNavy,
