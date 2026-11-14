@@ -51,7 +51,15 @@ jobs:
           chmod +x android/gradlew
 
       - name: 8. Build Debug Test APK (Instant Android Installation)
-        run: flutter build apk --debug
+        run: |
+          flutter build apk --debug 2>&1 | tee build_debug.log
+
+      - name: Upload Build Log on Failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: Build-Debug-Log
+          path: build_debug.log
 
       - name: 9. Verify Debug Test APK
         run: |
