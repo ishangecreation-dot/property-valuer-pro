@@ -50,7 +50,7 @@ jobs:
       - name: 7b. Download Gradle Wrapper JAR and Permissions
         run: |
           mkdir -p android/gradle/wrapper
-          curl -sLo android/gradle/wrapper/gradle-wrapper.jar https://raw.githubusercontent.com/gradle/gradle/v8.4.0/gradle/wrapper/gradle-wrapper.jar
+          curl -sLo android/gradle/wrapper/gradle-wrapper.jar https://raw.githubusercontent.com/gradle/gradle/v8.7.0/gradle/wrapper/gradle-wrapper.jar
           test -f android/gradle/wrapper/gradle-wrapper.jar
           echo "Downloaded Gradle wrapper jar: $(stat -c %s android/gradle/wrapper/gradle-wrapper.jar) bytes"
           chmod +x android/gradlew
