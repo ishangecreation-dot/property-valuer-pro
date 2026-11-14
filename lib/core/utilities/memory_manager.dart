@@ -31,3 +31,4 @@ class MemoryManager {
     return viewportRect.overlaps(elementBounds);
   }
 }
+
