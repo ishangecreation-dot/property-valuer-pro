@@ -4,6 +4,10 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 /// Secure Storage Service using Android Keystore / Hardware Security Module.
 /// Protects AI API keys, administrative passwords, and client credential metadata.
+///
+/// Security Note: A password embedded in a client-side APK can be extracted by
+/// a technically capable person. This password serves as a basic local application
+/// gate, not as strong server-side administrator authentication.
 class EncryptionService {
   static const FlutterSecureStorage _secureStorage = FlutterSecureStorage(
     aOptions: AndroidOptions(
@@ -16,73 +20,99 @@ class EncryptionService {
   static const String _keyAdminPassword = 'val_secure_admin_password';
   static const String _keyAiProvider = 'val_secure_ai_provider';
 
-  /// Saves the AI API key securely in Android Keystore
-  static Future<void> saveAiApiKey(String apiKey) async {
+  /// Required default administrator password per specification
+  static const String defaultAdminPassword = 'admin@valuer';
+
+  /// Saves the AI API key securely in Android Keystore / Secure Storage.
+  /// Validates that the key is not empty and never silently replaces a valid key with empty.
+  static Future<bool> saveAiApiKey(String apiKey) async {
+    final trimmed = apiKey.trim();
+    if (trimmed.isEmpty) {
+      return false;
+    }
+
     try {
-      await _secureStorage.write(key: _keyAiApiKey, value: apiKey.trim());
+      await _secureStorage.write(key: _keyAiApiKey, value: trimmed);
     } catch (_) {
       // Fallback for test / emulator environments lacking Keystore provider
-      final prefs = await SharedPreferences.getInstance();
-      await prefs.setString(_keyAiApiKey, apiKey.trim());
+      try {
+        final prefs = await SharedPreferences.getInstance();
+        await prefs.setString(_keyAiApiKey, trimmed);
+      } catch (_) {
+        return false;
+      }
     }
+    return true;
   }
 
-  /// Retrieves the AI API key from Android Keystore
+  /// Retrieves the AI API key from Android Keystore / Secure Storage.
   static Future<String> getAiApiKey() async {
     try {
       final key = await _secureStorage.read(key: _keyAiApiKey);
-      if (key != null && key.isNotEmpty) return key;
+      if (key != null && key.trim().isNotEmpty) {
+        return key.trim();
+      }
     } catch (_) {}
 
-    // Check fallback
-    final prefs = await SharedPreferences.getInstance();
-    return prefs.getString(_keyAiApiKey) ?? '';
-  }
-
-  /// Saves the administrator authentication password
-  static Future<void> saveAdminPassword(String password) async {
+    // Fallback to SharedPreferences if secure storage throws or is empty
     try {
-      await _secureStorage.write(key: _keyAdminPassword, value: password.trim());
-    } catch (_) {
       final prefs = await SharedPreferences.getInstance();
-      await prefs.setString(_keyAdminPassword, password.trim());
+      return prefs.getString(_keyAiApiKey)?.trim() ?? '';
+    } catch (_) {
+      return '';
     }
   }
 
-  /// Verifies the administrator password.
-  /// If no password has been initialized yet, allows the user to set/unlock on first use.
+  /// Saves the administrator authentication password securely in Keystore.
+  /// Intentionally avoids saving passwords in plain-text SharedPreferences.
+  static Future<void> saveAdminPassword(String password) async {
+    final trimmed = password.trim();
+    if (trimmed.isEmpty) return;
+
+    try {
+      await _secureStorage.write(key: _keyAdminPassword, value: trimmed);
+    } catch (_) {
+      // Do not store the password in plain-text SharedPreferences
+    }
+  }
+
+  /// Verifies the administrator password against the required default password.
+  /// Does NOT accept arbitrary first-entered passwords as new passwords.
   static Future<bool> verifyAdminPassword(String inputPassword) async {
     final trimmed = inputPassword.trim();
     if (trimmed.isEmpty) return false;
 
-    String? storedPassword;
-    try {
-      storedPassword = await _secureStorage.read(key: _keyAdminPassword);
-    } catch (_) {}
-
-    if (storedPassword == null || storedPassword.isEmpty) {
-      final prefs = await SharedPreferences.getInstance();
-      storedPassword = prefs.getString(_keyAdminPassword);
-    }
-
-    // First-time initialization: if no password has ever been set, the entered password initializes it
-    if (storedPassword == null || storedPassword.isEmpty) {
-      await saveAdminPassword(trimmed);
+    // Check against the authoritative default administrator password
+    if (trimmed == defaultAdminPassword) {
       return true;
     }
 
-    return storedPassword == trimmed;
+    // Check if an updated administrator password was explicitly saved in Keystore
+    try {
+      final stored = await _secureStorage.read(key: _keyAdminPassword);
+      if (stored != null && stored.trim().isNotEmpty && trimmed == stored.trim()) {
+        return true;
+      }
+    } catch (_) {}
+
+    return false;
   }
 
   /// Saves chosen AI Provider (Gemini 1.5 Flash, Claude, OpenAI)
   static Future<void> saveAiProvider(String provider) async {
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setString(_keyAiProvider, provider);
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString(_keyAiProvider, provider.trim());
+    } catch (_) {}
   }
 
   /// Retrieves chosen AI Provider
   static Future<String> getAiProvider() async {
-    final prefs = await SharedPreferences.getInstance();
-    return prefs.getString(_keyAiProvider) ?? 'Gemini 3.8 Flash';
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      return prefs.getString(_keyAiProvider) ?? 'Gemini 3.8 Flash';
+    } catch (_) {
+      return 'Gemini 3.8 Flash';
+    }
   }
 }
