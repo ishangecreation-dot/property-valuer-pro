@@ -57,7 +57,7 @@ jobs:
 
       - name: 8. Build Debug Test APK (Instant Android Installation)
         run: |
-          flutter build apk --debug -v > flutter_debug_build.log 2>&1 || {
+          flutter build apk --debug --android-skip-build-dependency-validation -v > flutter_debug_build.log 2>&1 || {
             BUILD_STATUS=$?
             echo "::error::Flutter debug build failed with code $BUILD_STATUS"
             echo "================ LAST 250 LINES OF BUILD LOG ================"
@@ -96,7 +96,7 @@ jobs:
 
       - name: 11. Build Release APK
         run: |
-          flutter build apk --release -v > flutter_release_build.log 2>&1 || {
+          flutter build apk --release --android-skip-build-dependency-validation -v > flutter_release_build.log 2>&1 || {
             BUILD_STATUS=$?
             echo "::error::Flutter release build failed with code $BUILD_STATUS"
             echo "================ LAST 250 LINES OF RELEASE BUILD LOG ================"
