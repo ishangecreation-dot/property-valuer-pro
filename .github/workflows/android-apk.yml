@@ -7,6 +7,9 @@ on:
     branches: [ main, master ]
   workflow_dispatch:
 
+permissions:
+  contents: write
+
 jobs:
   build:
     name: Build Test and Release APKs
@@ -15,6 +18,8 @@ jobs:
     steps:
       - name: 1. Checkout Repository
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: 2. Set up Java 17
         uses: actions/setup-java@v4
@@ -52,7 +57,25 @@ jobs:
 
       - name: 8. Build Debug Test APK (Instant Android Installation)
         run: |
-          flutter build apk --debug
+          flutter build apk --debug -v > flutter_debug_build.log 2>&1 || {
+            BUILD_STATUS=$?
+            echo "::error::Flutter debug build failed with code $BUILD_STATUS"
+            echo "================ LAST 250 LINES OF BUILD LOG ================"
+            tail -n 250 flutter_debug_build.log
+            echo "============================================================="
+            exit $BUILD_STATUS
+          }
+
+      - name: Record Build Failure Log to Branch
+        if: failure()
+        run: |
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+          git checkout -B build-error-log
+          tail -n 600 flutter_debug_build.log > last_build_error.txt
+          git add last_build_error.txt
+          git commit -m "ci: capture build error log [skip ci]" || true
+          git push -f origin build-error-log || true
 
       - name: 9. Verify and Prepare Debug Test APK
         run: |
@@ -72,7 +95,15 @@ jobs:
           retention-days: 30
 
       - name: 11. Build Release APK
-        run: flutter build apk --release
+        run: |
+          flutter build apk --release -v > flutter_release_build.log 2>&1 || {
+            BUILD_STATUS=$?
+            echo "::error::Flutter release build failed with code $BUILD_STATUS"
+            echo "================ LAST 250 LINES OF RELEASE BUILD LOG ================"
+            tail -n 250 flutter_release_build.log
+            echo "============================================================="
+            exit $BUILD_STATUS
+          }
 
       - name: 12. Verify and Prepare Release APK
         run: |
