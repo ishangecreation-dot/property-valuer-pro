@@ -147,13 +147,7 @@ class DocxService {
       sb.write(_p(profile.qualifications, bold: false, size: 20, color: '718096', align: 'center'));
     }
     sb.write(_p('${profile.professionalMembership} • ${profile.registrationNumber}', bold: false, size: 18, color: '718096', align: 'center'));
-    final phoneStr = [
-      profile.contactNumber,
-      if (profile.contactNumber2.isNotEmpty) profile.contactNumber2,
-    ].where((p) => p.isNotEmpty).join(' / ');
-    final telSection = phoneStr.isNotEmpty ? ' • Tel: $phoneStr' : '';
-    final emailSection = profile.emailAddress.isNotEmpty ? ' • Email: ${profile.emailAddress}' : '';
-    sb.write(_p('${profile.officeAddress}$telSection$emailSection', bold: false, size: 18, color: '718096', align: 'center'));
+    sb.write(_p('${profile.officeAddress} • Tel: ${profile.contactNumber} • Email: ${profile.emailAddress}', bold: false, size: 18, color: '718096', align: 'center'));
     sb.write(_divider());
 
     // Title & Certificate Summary
@@ -169,42 +163,63 @@ class DocxService {
       ['Current Registered Owner', deed.vendeeName.isNotEmpty ? deed.vendeeName : 'Certified in Deed ${deed.deedNumber}'],
       ['Legal Title Deed Reference', 'Deed No. ${deed.deedNumber} attested by ${deed.notaryPublicName} (${deed.landRegistry})'],
       ['Cadastral Survey Plan', 'Plan No. ${plan.planNumber} dated ${plan.surveyDate} by ${plan.surveyorName}'],
-      ['Land Extent Certified', '${totalPerches.toStringAsFixed(2)} Perches (Lot ${plan.selectedLots.map((l) => l.lotNumber).join(", ")})'],
-      ['Adopted Land Benchmark Rate', 'LKR ${_currencyFormat.format(val.adoptedLandRatePerPerch)} per Perch'],
-      ['Land Aggregate Valuation', 'LKR ${_currencyFormat.format(landVal)}'],
-      ['Structural Improvements (GRC)', bldg.hasBuilding ? '${totalFloorArea.toStringAsFixed(0)} sq.ft. @ LKR ${_currencyFormat.format(val.buildingReplacementCostPerSqFt)}/sq.ft.' : 'Bare Land (No Permanent Improvements)'],
-      ['Depreciated Structural Value', bldg.hasBuilding ? 'LKR ${_currencyFormat.format(depBldgVal)} (Depreciation: ${val.depreciationPercentage.toStringAsFixed(0)}%)' : 'LKR 0.00'],
-      ['PRESENT MARKET VALUE', 'LKR ${_currencyFormat.format(sayVal)}'],
-      ['FORCED SALE VALUE (FSV)', 'LKR ${_currencyFormat.format(fsv)} (${val.fsvPercentage.toStringAsFixed(0)}% of Market Value)'],
-      ['Collateral Risk Underwriting Rating', val.collateralRating],
+      ['Evaluated Land Extent', '${totalPerches.toStringAsFixed(2)} Perches (Selected Cadastral Lots)'],
+      ['Building Improvements', bldg.hasBuilding ? '${totalFloorArea.toStringAsFixed(0)} sq.ft. Residential Building' : 'Bare Land (No Building Improvements)'],
+      ['Adopted Land Rate', 'LKR ${_currencyFormat.format(val.adoptedLandRatePerPerch)} per Perch'],
+      ['Total Land Value', 'LKR ${_currencyFormat.format(landVal)}'],
+      ['Depreciated Building Value', bldg.hasBuilding ? 'LKR ${_currencyFormat.format(depBldgVal)}' : 'N/A (Bare Land)'],
+      ['TOTAL MARKET VALUE (SAY)', 'LKR ${_currencyFormat.format(sayVal)}'],
+      ['FORCED SALE VALUE (${val.fsvPercentage.toStringAsFixed(0)}% FSV)', 'LKR ${_currencyFormat.format(fsv)}'],
+      ['Collateral Underwriting Rating', val.collateralRating],
     ]));
 
-    sb.write(_divider());
+    sb.write(_emptyParagraph());
 
-    // Section 1: Identification & Devolution of Title
-    sb.write(_p('1. IDENTIFICATION OF PROPERTY & DEVOLUTION OF TITLE', bold: true, size: 24, color: '16324F'));
-    sb.write(_p('The property is held under Deed of Transfer No. ${deed.deedNumber} dated ${deed.executionDate} attested by ${deed.notaryPublicName}, Notary Public, and registered under Volume/Folio ${deed.registrationVolumeFolio} at the ${deed.landRegistry}. The absolute title rests with ${deed.vendeeName}. No prior encumbrances or lis pendens found on Day Book search.'));
+    // Section 1: Identification of Property
+    sb.write(_p('1. IDENTIFICATION OF THE SUBJECT PROPERTY', bold: true, size: 24, color: '16324F'));
+    sb.write(_p('The property under assessment comprises Lot No(s). ${plan.lots.where((l) => l.isSelected).map((l) => l.lotNumber).join(", ")} of the land named "${plan.landName}" situated at ${insp.village}, within Grama Niladhari Division of ${insp.gnDivision}, Divisional Secretariat of ${insp.divisionalSecretariat}, and local authority limits of ${insp.localAuthority}. Assessment No: ${insp.assessmentNumber}.'));
 
-    // Section 2: Instructions & Valuation Purpose
-    sb.write(_p('2. INSTRUCTIONS & PURPOSE OF VALUATION', bold: true, size: 24, color: '16324F'));
-    sb.write(_p('Valuation commissioned by ${insp.requestingParty.isNotEmpty ? insp.requestingParty : project.clientOrBank} for the specific purpose of ${insp.valuationPurpose}.'));
+    // Section 2: Title Deed Particulars
+    sb.write(_p('2. LEGAL TITLE PARTICULARS & DEVOLUTION OF OWNERSHIP', bold: true, size: 24, color: '16324F'));
+    sb.write(_table([
+      ['Title Deed Number', deed.deedNumber],
+      ['Date of Execution', deed.executionDate],
+      ['Notary Public', '${deed.notaryPublicName}, NP (${deed.notaryPublicStation})'],
+      ['Land Registry', deed.landRegistry],
+      ['Registration Date', deed.registrationDate],
+      ['Day Book / Registration No.', deed.dayBookNumber],
+      ['Register Folio Reference', deed.registerFolioNumber],
+      ['Current Vendee / Owner', '${deed.vendeeName} (NIC: ${deed.vendeeNic})'],
+      ['Owner Address', deed.vendeeAddress],
+      ['Previous Vendor', '${deed.vendorName} (NIC: ${deed.vendorNic})'],
+      ['Purchase Consideration', 'LKR ${_currencyFormat.format(deed.purchaseConsideration)}'],
+    ]));
 
-    // Section 3: Date of Inspection & Conditions
-    sb.write(_p('3. DATE OF INSPECTION & PHYSICAL VERIFICATION', bold: true, size: 24, color: '16324F'));
-    sb.write(_p('The property was physically inspected on ${insp.dateOfInspection} in the presence of ${insp.inspectedInPresenceOf.isNotEmpty ? insp.inspectedInPresenceOf : "the registered owner"}. Inspection weather and access conditions: ${insp.weatherConditions}.'));
+    // Section 3: Cadastral Survey Plan & Boundaries
+    sb.write(_p('3. SURVEY PLAN PARTICULARS & CADASTRAL BOUNDARIES', bold: true, size: 24, color: '16324F'));
+    sb.write(_p('According to Survey Plan No. ${plan.planNumber} dated ${plan.surveyDate} made by ${plan.surveyorName}, Licensed Surveyor (Reg. No. ${plan.surveyorRegistrationNumber}):'));
+    for (final lot in plan.lots.where((l) => l.isSelected)) {
+      sb.write(_p('Lot No. ${lot.lotNumber}: Extent ${lot.acres}A ${lot.roods}R ${lot.perches}P (${lot.totalPerches.toStringAsFixed(2)} Perches)', bold: true, size: 20));
+      sb.write(_p('• North: ${lot.northBoundary}'));
+      sb.write(_p('• East: ${lot.eastBoundary}'));
+      sb.write(_p('• South: ${lot.southBoundary}'));
+      sb.write(_p('• West: ${lot.westBoundary}'));
+    }
 
-    // Section 4: Boundaries & Cadastral Verification
-    sb.write(_p('4. BOUNDARIES & SURVEY PLAN SPECIFICATIONS', bold: true, size: 24, color: '16324F'));
-    sb.write(_p('According to Survey Plan No. ${plan.planNumber} prepared by ${plan.surveyorName}, Licensed Surveyor, the land comprises Lot(s) ${plan.selectedLots.map((l) => l.lotNumber).join(", ")} having a total extent of ${totalPerches.toStringAsFixed(2)} Perches.'));
-    sb.write(_p('Verified Physical Boundaries: North: ${plan.boundaryNorth}; East: ${plan.boundaryEast}; South: ${plan.boundarySouth}; West: ${plan.boundaryWest}. Boundary demarcations align with physical site features.'));
+    // Section 4: Target Institution & Purpose
+    sb.write(_p('4. PURPOSE OF VALUATION & TARGET INSTITUTION', bold: true, size: 24, color: '16324F'));
+    sb.write(_p('This appraisal has been prepared exclusively for the confidential consideration of ${project.clientOrBank} (${insp.bankBranch} Branch) for the purpose of ${insp.valuationPurpose} as credit collateral.'));
 
-    // Section 5: Statutory & Local Authority Compliance
-    sb.write(_p('5. STATUTORY REGULATIONS & STREET LINES', bold: true, size: 24, color: '16324F'));
-    sb.write(_p('Local Authority: ${loc.localAuthority}. The subject property lies outside gazetted road widening street lines, railway reservations, and water board easements. Conforms to standard UDA / Local Authority zoning.'));
+    // Section 5: Administrative & Statutory Details
+    sb.write(_p('5. ADMINISTRATIVE & STATUTORY COMPLIANCE', bold: true, size: 24, color: '16324F'));
+    sb.write(_p('Statutory and planning compliance matrix for ${insp.localAuthority}:'));
+    for (final comp in insp.statutoryCompliances) {
+      sb.write(_p('• ${comp.name}: Status - ${comp.status} (${comp.remarks.isNotEmpty ? comp.remarks : "Standard conformity"})'));
+    }
 
-    // Section 6: Situation, Locality & Accessibility
-    sb.write(_p('6. SITUATION, LOCALITY & INFRASTRUCTURE', bold: true, size: 24, color: '16324F'));
-    sb.write(_p('Located at ${loc.fullAddress}. Nearest prominent town: ${loc.nearestTown} (${loc.distanceToTownKm} km). Frontage road width: ${loc.accessRoadWidthFeet} feet (${loc.roadSurface} surface, in ${loc.roadCondition} condition). Motorable accessibility: ${loc.vehicleAccessibility}. Available utilities: ${loc.utilities.join(", ")}. GIS Pin: ${loc.latitude.toStringAsFixed(6)}° N, ${loc.longitude.toStringAsFixed(6)}° E.'));
+    // Section 6: Location, Access & Locality
+    sb.write(_p('6. LOCATION, ACCESSIBILITY & LOCALITY', bold: true, size: 24, color: '16324F'));
+    sb.write(_p('The property is situated approximately ${loc.distanceFromTownKm.toStringAsFixed(1)} km from ${loc.nearestTown} town center. Access Directions: ${loc.accessDirections}. Frontage road width: approximately ${loc.accessRoadWidthFt.toStringAsFixed(0)} feet (${loc.roadSurface} surface, in ${loc.roadCondition} condition). Motorable accessibility: ${loc.vehicleAccessibility}. Available utilities: ${loc.utilities.join(", ")}. GIS Pin: ${loc.latitude.toStringAsFixed(6)}° N, ${loc.longitude.toStringAsFixed(6)}° E.'));
 
     // Section 7: Physical Characteristics of Land
     sb.write(_p('7. PHYSICAL CHARACTERISTICS OF THE LAND', bold: true, size: 24, color: '16324F'));
@@ -232,12 +247,12 @@ class DocxService {
     sb.write(_table([
       ['Valuation Component', 'Computation Basis', 'Amount (LKR)'],
       ['Land Value', '${totalPerches.toStringAsFixed(2)} P @ LKR ${_currencyFormat.format(val.adoptedLandRatePerPerch)}/P', _currencyFormat.format(landVal)],
-      ['Structural Improvements (GRC)', bldg.hasBuilding ? '${totalFloorArea.toStringAsFixed(0)} sq.ft. @ LKR ${_currencyFormat.format(val.buildingReplacementCostPerSqFt)}/sq.ft.' : 'Bare Land', bldg.hasBuilding ? _currencyFormat.format(grc) : '0.00'],
-      ['Depreciation Allowance', bldg.hasBuilding ? 'Less ${val.depreciationPercentage.toStringAsFixed(0)}% for structural age' : 'N/A', bldg.hasBuilding ? '(${_currencyFormat.format(dep)})' : '0.00'],
-      ['Net Depreciated Improvement Value', bldg.hasBuilding ? 'Structural net replacement worth' : 'N/A', _currencyFormat.format(depBldgVal)],
-      ['TOTAL REAL ESTATE WORTH', 'Land + Improvements', _currencyFormat.format(rawMarketVal)],
-      ['MARKET VALUE (SAY)', 'Certified standard valuation increment', _currencyFormat.format(sayVal)],
-      ['FORCED SALE VALUE (FSV)', '${val.fsvPercentage.toStringAsFixed(0)}% of Market Value', _currencyFormat.format(fsv)],
+      ['Building Replacement Cost (GRC)', bldg.hasBuilding ? '${totalFloorArea.toStringAsFixed(0)} sq.ft. @ LKR ${_currencyFormat.format(val.buildingReplacementCostPerSqFt)}/sq.ft.' : 'N/A', _currencyFormat.format(grc)],
+      ['Depreciation Allowance', bldg.hasBuilding ? 'Less ${val.depreciationPercentage.toStringAsFixed(0)}% for ${bldg.buildings.first.ageYears} yrs age' : 'N/A', '(${_currencyFormat.format(dep)})'],
+      ['Depreciated Building Value', bldg.hasBuilding ? 'Net structural value' : 'N/A', _currencyFormat.format(depBldgVal)],
+      ['TOTAL RAW MARKET VALUE', 'Land Value + Depreciated Building Value', _currencyFormat.format(rawMarketVal)],
+      ['MARKET VALUE (SAY)', 'Rounded to nearest standard valuation increment', _currencyFormat.format(sayVal)],
+      ['FORCED SALE VALUE (FSV)', 'Calculated at ${val.fsvPercentage.toStringAsFixed(0)}% of Market Value', _currencyFormat.format(fsv)],
     ]));
 
     // Section 10: Conclusion & Certification
