@@ -74,7 +74,6 @@ class DeedData {
     vendorNic: json['vendorNic'] ?? '',
     vendorAddress: json['vendorAddress'] ?? '',
     purchaseConsideration: (json['purchaseConsideration'] as num?)?.toDouble() ?? 0.0,
-    documentFilePaths: List<String>.from(json['documentFilePaths'] ?? []),
-    uncertainFields: Map<String, bool>.from(json['uncertainFields'] ?? {}),
+    documentFilePaths: List<String>.from(json['documentFilePaths'] ?? []),\n    uncertainFields: Map<String, bool>.from(json['uncertainFields'] ?? {}),
   );
 }
