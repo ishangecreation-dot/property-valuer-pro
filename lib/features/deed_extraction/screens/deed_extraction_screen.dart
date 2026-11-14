@@ -132,43 +132,20 @@ class _DeedExtractionScreenState extends State<DeedExtractionScreen> {
       _extractionStatus = 'Starting AI document extraction...';
     });
 
-    try {
-      final extracted = await AiService.extractDeed(
-        filePaths: _deed.documentFilePaths,
-        onProgress: (status) => setState(() => _extractionStatus = status),
-      );
+    final extracted = await AiService.extractDeed(
+      filePaths: _deed.documentFilePaths,
+      onProgress: (status) => setState(() => _extractionStatus = status),
+    );
 
-      setState(() {
-        _deed = extracted;
-        _updateControllers();
-        _isExtracting = false;
-      });
+    setState(() {
+      _deed = extracted;
+      _updateControllers();
+      _isExtracting = false;
+    });
 
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('AI Deed Details Extracted. Please review and verify.')),
-      );
-    } catch (e) {
-      setState(() => _isExtracting = false);
-      showDialog(
-        context: context,
-        builder: (ctx) => AlertDialog(
-          title: const Row(
-            children: [
-              Icon(Icons.warning, color: AppColors.warning),
-              SizedBox(width: 8),
-              Text('AI Extraction Notice', style: TextStyle(fontSize: 16)),
-            ],
-          ),
-          content: Text('$e\n\nYou can proceed by entering the deed particulars manually below.'),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.of(ctx).pop(),
-              child: const Text('OK'),
-            ),
-          ],
-        ),
-      );
-    }
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('AI Deed Details Extracted. Please review and verify.')),
+    );
   }
 
   @override
