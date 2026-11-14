@@ -106,43 +106,20 @@ class _PlanExtractionScreenState extends State<PlanExtractionScreen> {
       _extractionStatus = 'Analyzing survey plan & extracting lots...';
     });
 
-    try {
-      final extracted = await AiService.extractSurveyPlan(
-        filePaths: _plan.documentFilePaths,
-        onProgress: (status) => setState(() => _extractionStatus = status),
-      );
+    final extracted = await AiService.extractSurveyPlan(
+      filePaths: _plan.documentFilePaths,
+      onProgress: (status) => setState(() => _extractionStatus = status),
+    );
 
-      setState(() {
-        _plan = extracted;
-        _updateControllers();
-        _isExtracting = false;
-      });
+    setState(() {
+      _plan = extracted;
+      _updateControllers();
+      _isExtracting = false;
+    });
 
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Survey Plan & Lots extracted successfully.')),
-      );
-    } catch (e) {
-      setState(() => _isExtracting = false);
-      showDialog(
-        context: context,
-        builder: (ctx) => AlertDialog(
-          title: const Row(
-            children: [
-              Icon(Icons.warning, color: AppColors.warning),
-              SizedBox(width: 8),
-              Text('Plan Extraction Notice', style: TextStyle(fontSize: 16)),
-            ],
-          ),
-          content: Text('$e\n\nYou can manually enter lots and boundaries below.'),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.of(ctx).pop(),
-              child: const Text('OK'),
-            ),
-          ],
-        ),
-      );
-    }
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('Survey Plan & Lots extracted successfully.')),
+    );
   }
 
   void _addNewLot() {
