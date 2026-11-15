@@ -510,14 +510,14 @@ class _AdminSettingsModalState extends State<AdminSettingsModal> {
                           padding: EdgeInsets.symmetric(horizontal: 4, vertical: 2),
                           child: Row(
                             children: [
-                              Icon(Icons.sync, size: 14, color: AppColors.secondaryBlue),
+                              Icon(Icons.sync, size: 14, color: AppColors.professionalBlue),
                               SizedBox(width: 4),
                               Text(
                                 'Fetch Models',
                                 style: TextStyle(
                                   fontSize: 11,
                                   fontWeight: FontWeight.w600,
-                                  color: AppColors.secondaryBlue,
+                                  color: AppColors.professionalBlue,
                                 ),
                               ),
                             ],
@@ -558,7 +558,7 @@ class _AdminSettingsModalState extends State<AdminSettingsModal> {
                               style: TextStyle(
                                 fontSize: 13,
                                 fontWeight: isRecommended ? FontWeight.w700 : FontWeight.w500,
-                                color: isRecommended ? AppColors.primaryNavy : AppColors.primaryText,
+                                color: isRecommended ? AppColors.primaryNavy : AppColors.mainText,
                               ),
                               overflow: TextOverflow.ellipsis,
                             ),
