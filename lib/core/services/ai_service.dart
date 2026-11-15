@@ -13,30 +13,132 @@ class AiService {
       'https://generativelanguage.googleapis.com/v1beta/models/';
 
   /// Default verified working Google Gemini model
-  static const String defaultModelId = 'gemini-1.5-flash';
-  static const String defaultModelLabel = 'Gemini 1.5 Flash (Recommended)';
+  static const String defaultModelId = 'gemini-3.1-flash-lite';
+  static const String defaultModelLabel = 'Gemini 3.1 Flash-Lite (Recommended)';
+
+  /// Built-in fallback list of modern active Gemini models
+  static const List<String> defaultWorkingModels = [
+    'gemini-3.1-flash-lite',
+    'gemini-3.1-flash-lite-preview',
+    'gemini-3.5-flash-lite',
+    'gemini-flash-lite-latest',
+    'gemini-2.5-flash-lite',
+    'gemini-3.1-pro-preview',
+    'gemini-flash-latest',
+  ];
 
   /// Admin-panel "AI Engine Model" labels mapped to official Gemini model IDs.
   static const Map<String, String> providerModelIds = {
-    'Gemini 1.5 Flash (Recommended)': 'gemini-1.5-flash',
-    'Gemini 2.0 Flash (Next-Gen)': 'gemini-2.0-flash',
-    'Gemini 1.5 Pro (Deep Reasoning)': 'gemini-1.5-pro',
-    'Gemini 2.0 Flash-Lite': 'gemini-2.0-flash-lite',
+    'Gemini 3.1 Flash-Lite (Recommended)': 'gemini-3.1-flash-lite',
+    'Gemini 3.5 Flash-Lite': 'gemini-3.5-flash-lite',
+    'Gemini Flash-Lite Latest': 'gemini-flash-lite-latest',
+    'Gemini 3.1 Flash-Lite Preview': 'gemini-3.1-flash-lite-preview',
+    'Gemini 2.5 Flash-Lite': 'gemini-2.5-flash-lite',
+    'Gemini 3.1 Pro Preview': 'gemini-3.1-pro-preview',
+    'Gemini Flash Latest': 'gemini-flash-latest',
   };
 
   /// Resolves the official Gemini model ID from a saved provider label or direct model ID.
   static String resolveModelId(String provider) {
-    if (providerModelIds.containsKey(provider)) {
-      return providerModelIds[provider]!;
+    final clean = provider.trim();
+    if (providerModelIds.containsKey(clean)) {
+      return providerModelIds[clean]!;
     }
-    // Direct model id check (e.g. 'gemini-1.5-flash', 'gemini-2.0-flash')
-    if (provider.startsWith('gemini-') &&
-        !provider.contains('3.1') &&
-        !provider.contains('3.5') &&
-        !provider.contains('3.8')) {
-      return provider;
+    // Clean if prefixed with 'models/'
+    final stripped = clean.startsWith('models/') ? clean.substring(7) : clean;
+    if (stripped.startsWith('gemini-') || stripped.startsWith('gemma-')) {
+      // Migrate retired models
+      if (stripped == 'gemini-1.5-flash' ||
+          stripped == 'gemini-2.0-flash' ||
+          stripped.contains('1.5')) {
+        return defaultModelId;
+      }
+      return stripped;
     }
     return defaultModelId;
+  }
+
+  /// Formats a clean, readable label for any model ID
+  static String formatModelLabel(String modelId) {
+    for (final entry in providerModelIds.entries) {
+      if (entry.value == modelId) return entry.key;
+    }
+    if (modelId == defaultModelId) return defaultModelLabel;
+    final titleCase = modelId
+        .replaceAll('gemini-', 'Gemini ')
+        .split('-')
+        .map((w) => w.isNotEmpty ? '${w[0].toUpperCase()}${w.substring(1)}' : '')
+        .join('-');
+    return titleCase;
+  }
+
+  /// Fetches the live list of models provided by the user's Gemini API key.
+  /// Filters to models supporting 'generateContent' (OCR & multimodal document extraction).
+  static Future<List<String>> fetchAvailableModels({String? apiKey}) async {
+    if (fetchModelsOverride != null) {
+      return fetchModelsOverride!;
+    }
+
+    final key = apiKey ?? await EncryptionService.getAiApiKey();
+    if (key.trim().isEmpty) {
+      return defaultWorkingModels;
+    }
+
+    try {
+      final url = 'https://generativelanguage.googleapis.com/v1beta/models?key=${key.trim()}';
+      final response = await http.get(
+        Uri.parse(url),
+        headers: {'Content-Type': 'application/json'},
+      ).timeout(const Duration(seconds: 10));
+
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body) as Map<String, dynamic>;
+        final rawList = data['models'] as List<dynamic>? ?? [];
+        final models = <String>[];
+
+        for (final item in rawList) {
+          if (item is Map<String, dynamic>) {
+            final name = (item['name'] as String? ?? '').replaceFirst('models/', '');
+            final methods = (item['supportedGenerationMethods'] as List<dynamic>? ?? [])
+                .map((e) => e.toString())
+                .toList();
+
+            // Must support generateContent and be a text/multimodal model
+            if (methods.contains('generateContent') &&
+                name.isNotEmpty &&
+                !name.contains('tts') &&
+                !name.contains('robotics') &&
+                !name.contains('lyria')) {
+              models.add(name);
+            }
+          }
+        }
+
+        if (models.isNotEmpty) {
+          // Sort so recommended flash-lite models appear first
+          models.sort((a, b) {
+            final aPriority = _modelPriority(a);
+            final bPriority = _modelPriority(b);
+            if (aPriority != bPriority) return aPriority.compareTo(bPriority);
+            return a.compareTo(b);
+          });
+          return models;
+        }
+      }
+    } catch (_) {}
+
+    return defaultWorkingModels;
+  }
+
+  static int _modelPriority(String model) {
+    if (model == 'gemini-3.1-flash-lite') return 0;
+    if (model == 'gemini-3.1-flash-lite-preview') return 1;
+    if (model == 'gemini-3.5-flash-lite') return 2;
+    if (model == 'gemini-flash-lite-latest') return 3;
+    if (model.contains('flash-lite')) return 4;
+    if (model.contains('flash')) return 5;
+    if (model.contains('pro')) return 6;
+    return 7;
   }
 
   /// Returns the active Gemini model ID currently configured
@@ -53,6 +155,7 @@ class AiService {
 
   /// Optional mock hook for automated unit tests
   static bool? testConnectionOverride;
+  static List<String>? fetchModelsOverride;
 
   /// Tests connectivity with the configured AI provider and API Key.
   static Future<bool> testConnection() async {
@@ -133,7 +236,7 @@ class AiService {
       } else if (response.statusCode == 404) {
         return (
           success: false,
-          message: 'Model "$model" was not found (HTTP 404). Please switch to "Gemini 1.5 Flash (Recommended)".',
+          message: 'Model "$model" was not found (HTTP 404). Please select a working model like "Gemini 3.1 Flash-Lite".',
           model: model,
         );
       } else if (response.statusCode == 400 || response.statusCode == 401) {

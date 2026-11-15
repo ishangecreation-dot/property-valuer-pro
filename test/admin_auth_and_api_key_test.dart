@@ -210,24 +210,24 @@ void main() {
       expect(find.text('Enter Your Gemini API Key'), findsOneWidget);
     });
 
-    test('10. Default model is Gemini 1.5 Flash and resolves to official Google model id', () async {
+    test('10. Default model is Gemini 3.1 Flash-Lite and resolves to official Google model id', () async {
       final provider = await EncryptionService.getAiProvider();
-      expect(provider, 'Gemini 1.5 Flash (Recommended)');
+      expect(provider, 'Gemini 3.1 Flash-Lite (Recommended)');
 
       final modelId = AiService.resolveModelId(provider);
-      expect(modelId, 'gemini-1.5-flash');
+      expect(modelId, 'gemini-3.1-flash-lite');
 
       final activeModel = await AiService.getActiveModelId();
-      expect(activeModel, 'gemini-1.5-flash');
+      expect(activeModel, 'gemini-3.1-flash-lite');
     });
 
-    test('11. Obsolete model names (3.1, 3.5, 3.8) migrate safely to Gemini 1.5 Flash', () async {
+    test('11. Retired model names (1.5-flash, 2.0-flash) migrate safely to Gemini 3.1 Flash-Lite', () async {
       final prefs = await SharedPreferences.getInstance();
-      await prefs.setString('val_secure_ai_provider', 'Gemini 3.1 Flash-Lite');
+      await prefs.setString('val_secure_ai_provider', 'Gemini 1.5 Flash (Recommended)');
 
       final provider = await EncryptionService.getAiProvider();
-      expect(provider, 'Gemini 1.5 Flash (Recommended)');
-      expect(AiService.resolveModelId(provider), 'gemini-1.5-flash');
+      expect(provider, 'Gemini 3.1 Flash-Lite (Recommended)');
+      expect(AiService.resolveModelId(provider), 'gemini-3.1-flash-lite');
     });
 
     testWidgets('12. Model selection menu is displayed prominently on AI API Key Settings screen', (WidgetTester tester) async {
@@ -251,8 +251,21 @@ void main() {
 
       // Model selection header and options
       expect(find.text('AI Engine Model'), findsWidgets);
-      expect(find.text('Google Gemini API'), findsOneWidget);
-      expect(find.text('Target: models/gemini-1.5-flash'), findsOneWidget);
+      expect(find.text('Fetch Models'), findsOneWidget);
+      expect(find.text('Target: models/gemini-3.1-flash-lite'), findsOneWidget);
+    });
+
+    test('13. fetchAvailableModels returns working models list for API key', () async {
+      AiService.fetchModelsOverride = [
+        'gemini-3.1-flash-lite',
+        'gemini-3.5-flash-lite',
+        'gemini-flash-lite-latest',
+      ];
+
+      final models = await AiService.fetchAvailableModels(apiKey: 'dummy_key');
+      expect(models, contains('gemini-3.1-flash-lite'));
+      expect(models.length, 3);
+      AiService.fetchModelsOverride = null;
     });
   });
 }

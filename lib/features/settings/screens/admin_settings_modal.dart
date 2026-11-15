@@ -32,8 +32,10 @@ class _AdminSettingsModalState extends State<AdminSettingsModal> {
   final TextEditingController _apiKeyController = TextEditingController();
   final TextEditingController _metaPlacementIdController = TextEditingController();
 
-  String _selectedProvider = AiService.defaultModelLabel;
+  String _selectedProvider = AiService.defaultModelId;
   String _selectedAdProvider = AdService.activeAdProvider;
+  List<String> _availableModels = List.from(AiService.defaultWorkingModels);
+  bool _isLoadingModels = false;
   bool _isTesting = false;
   String? _testMessage;
   bool? _testSuccess;
@@ -62,17 +64,66 @@ class _AdminSettingsModalState extends State<AdminSettingsModal> {
     final isPaid = await EntitlementService.isPaidTier();
 
     if (!mounted) return;
+    final activeId = AiService.resolveModelId(provider);
+    final models = List<String>.from(AiService.defaultWorkingModels);
+    if (!models.contains(activeId)) {
+      models.insert(0, activeId);
+    }
+
     setState(() {
       _apiKeyController.text = key;
-      _selectedProvider = AiService.providerModelIds.containsKey(provider)
-          ? provider
-          : AiService.defaultModelLabel;
+      _selectedProvider = activeId;
+      _availableModels = models;
       _selectedAdProvider = AdService.activeAdProvider;
       _metaPlacementIdController.text = AdService.metaInterstitialPlacementId;
       _enableAds = AdService.isAdsEnabled;
       _usageState = usage;
       _isPaidTier = isPaid;
     });
+
+    if (key.isNotEmpty) {
+      _fetchModels(key, silent: true);
+    }
+  }
+
+  /// Fetches live models provided by the user's Gemini API key
+  Future<void> _fetchModels(String apiKey, {bool silent = false}) async {
+    final key = apiKey.trim();
+    if (key.isEmpty) return;
+
+    if (!silent) {
+      setState(() => _isLoadingModels = true);
+    }
+
+    try {
+      final fetched = await AiService.fetchAvailableModels(apiKey: key);
+      if (!mounted) return;
+
+      setState(() {
+        _isLoadingModels = false;
+        if (fetched.isNotEmpty) {
+          _availableModels = fetched;
+          final currentModelId = AiService.resolveModelId(_selectedProvider);
+          if (!_availableModels.contains(currentModelId)) {
+            _selectedProvider = fetched.first;
+            EncryptionService.saveAiProvider(_selectedProvider);
+          }
+        }
+      });
+
+      if (!silent) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            backgroundColor: AppColors.success,
+            content: Text('Discovered ${_availableModels.length} available models from your API key.'),
+          ),
+        );
+      }
+    } catch (_) {
+      if (mounted) {
+        setState(() => _isLoadingModels = false);
+      }
+    }
   }
 
   /// Verifies password against default administrator password
@@ -127,6 +178,9 @@ class _AdminSettingsModalState extends State<AdminSettingsModal> {
       _isAuthenticated = true;
       _apiKeyController.text = key;
     });
+    if (key.isNotEmpty) {
+      _fetchModels(key, silent: true);
+    }
   }
 
   /// Saves the Gemini API key and active model securely
@@ -147,11 +201,12 @@ class _AdminSettingsModalState extends State<AdminSettingsModal> {
     }
 
     final savedKey = await EncryptionService.saveAiApiKey(key);
-    await EncryptionService.saveAiProvider(_selectedProvider);
+    final activeModel = AiService.resolveModelId(_selectedProvider);
+    await EncryptionService.saveAiProvider(activeModel);
     if (!mounted) return;
 
     if (savedKey) {
-      final activeModel = AiService.resolveModelId(_selectedProvider);
+      _fetchModels(key, silent: true);
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           backgroundColor: AppColors.success,
@@ -159,7 +214,7 @@ class _AdminSettingsModalState extends State<AdminSettingsModal> {
         ),
       );
       setState(() {
-        _testMessage = 'Settings saved: $_selectedProvider ($activeModel) is active.';
+        _testMessage = 'Settings saved: $activeModel is active.';
         _testSuccess = true;
       });
     }
@@ -397,9 +452,11 @@ class _AdminSettingsModalState extends State<AdminSettingsModal> {
                     onPressed: () async {
                       final data = await Clipboard.getData('text/plain');
                       if (data?.text != null) {
+                        final pasted = data!.text!.trim();
                         setState(() {
-                          _apiKeyController.text = data!.text!.trim();
+                          _apiKeyController.text = pasted;
                         });
+                        _fetchModels(pasted, silent: true);
                       }
                     },
                   ),
@@ -425,11 +482,11 @@ class _AdminSettingsModalState extends State<AdminSettingsModal> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const Row(
+                Row(
                   children: [
-                    Icon(Icons.psychology, size: 18, color: AppColors.primaryNavy),
-                    SizedBox(width: 8),
-                    Text(
+                    const Icon(Icons.psychology, size: 18, color: AppColors.primaryNavy),
+                    const SizedBox(width: 8),
+                    const Text(
                       'AI Engine Model',
                       style: TextStyle(
                         fontFamily: 'Manrope',
@@ -438,20 +495,42 @@ class _AdminSettingsModalState extends State<AdminSettingsModal> {
                         color: AppColors.primaryNavy,
                       ),
                     ),
-                    Spacer(),
-                    Text(
-                      'Google Gemini API',
-                      style: TextStyle(
-                        fontSize: 11,
-                        fontWeight: FontWeight.w600,
-                        color: AppColors.secondaryBlue,
+                    const Spacer(),
+                    if (_isLoadingModels)
+                      const SizedBox(
+                        width: 14,
+                        height: 14,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
+                    else
+                      InkWell(
+                        onTap: () => _fetchModels(_apiKeyController.text, silent: false),
+                        borderRadius: BorderRadius.circular(4),
+                        child: const Padding(
+                          padding: EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+                          child: Row(
+                            children: [
+                              Icon(Icons.sync, size: 14, color: AppColors.secondaryBlue),
+                              SizedBox(width: 4),
+                              Text(
+                                'Fetch Models',
+                                style: TextStyle(
+                                  fontSize: 11,
+                                  fontWeight: FontWeight.w600,
+                                  color: AppColors.secondaryBlue,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
                       ),
-                    ),
                   ],
                 ),
                 const SizedBox(height: 8),
                 DropdownButtonFormField<String>(
-                  value: _selectedProvider,
+                  value: _availableModels.contains(AiService.resolveModelId(_selectedProvider))
+                      ? AiService.resolveModelId(_selectedProvider)
+                      : (_availableModels.isNotEmpty ? _availableModels.first : AiService.defaultModelId),
                   isExpanded: true,
                   decoration: InputDecoration(
                     contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
@@ -460,10 +539,11 @@ class _AdminSettingsModalState extends State<AdminSettingsModal> {
                     fillColor: Colors.white,
                     isDense: true,
                   ),
-                  items: AiService.providerModelIds.keys.map((label) {
-                    final isRecommended = label.contains('Recommended');
+                  items: _availableModels.map((modelId) {
+                    final isRecommended = modelId == AiService.defaultModelId || modelId.contains('3.1-flash-lite');
+                    final displayLabel = AiService.formatModelLabel(modelId);
                     return DropdownMenuItem<String>(
-                      value: label,
+                      value: modelId,
                       child: Row(
                         children: [
                           Icon(
@@ -474,7 +554,7 @@ class _AdminSettingsModalState extends State<AdminSettingsModal> {
                           const SizedBox(width: 8),
                           Expanded(
                             child: Text(
-                              label,
+                              displayLabel,
                               style: TextStyle(
                                 fontSize: 13,
                                 fontWeight: isRecommended ? FontWeight.w700 : FontWeight.w500,
@@ -510,9 +590,9 @@ class _AdminSettingsModalState extends State<AdminSettingsModal> {
                         color: AppColors.secondaryText,
                       ),
                     ),
-                    const Text(
-                      'v1beta Multimodal / OCR',
-                      style: TextStyle(fontSize: 10.5, color: AppColors.secondaryText),
+                    Text(
+                      '${_availableModels.length} models available',
+                      style: const TextStyle(fontSize: 10.5, color: AppColors.secondaryText),
                     ),
                   ],
                 ),
