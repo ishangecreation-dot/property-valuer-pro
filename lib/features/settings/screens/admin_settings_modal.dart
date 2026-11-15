@@ -32,7 +32,7 @@ class _AdminSettingsModalState extends State<AdminSettingsModal> {
   final TextEditingController _apiKeyController = TextEditingController();
   final TextEditingController _metaPlacementIdController = TextEditingController();
 
-  String _selectedProvider = 'Gemini 3.1 Flash-Lite';
+  String _selectedProvider = AiService.defaultModelLabel;
   String _selectedAdProvider = AdService.activeAdProvider;
   bool _isTesting = false;
   String? _testMessage;
@@ -64,7 +64,9 @@ class _AdminSettingsModalState extends State<AdminSettingsModal> {
     if (!mounted) return;
     setState(() {
       _apiKeyController.text = key;
-      _selectedProvider = provider;
+      _selectedProvider = AiService.providerModelIds.containsKey(provider)
+          ? provider
+          : AiService.defaultModelLabel;
       _selectedAdProvider = AdService.activeAdProvider;
       _metaPlacementIdController.text = AdService.metaInterstitialPlacementId;
       _enableAds = AdService.isAdsEnabled;
@@ -127,7 +129,7 @@ class _AdminSettingsModalState extends State<AdminSettingsModal> {
     });
   }
 
-  /// Saves the Gemini API key securely
+  /// Saves the Gemini API key and active model securely
   Future<void> _saveApiKey() async {
     final key = _apiKeyController.text.trim();
     if (key.isEmpty) {
@@ -144,18 +146,20 @@ class _AdminSettingsModalState extends State<AdminSettingsModal> {
       return;
     }
 
-    final saved = await EncryptionService.saveAiApiKey(key);
+    final savedKey = await EncryptionService.saveAiApiKey(key);
+    await EncryptionService.saveAiProvider(_selectedProvider);
     if (!mounted) return;
 
-    if (saved) {
+    if (savedKey) {
+      final activeModel = AiService.resolveModelId(_selectedProvider);
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
+        SnackBar(
           backgroundColor: AppColors.success,
-          content: Text('API key saved successfully.'),
+          content: Text('API key & model ($activeModel) saved successfully.'),
         ),
       );
       setState(() {
-        _testMessage = 'API key saved successfully.';
+        _testMessage = 'Settings saved: $_selectedProvider ($activeModel) is active.';
         _testSuccess = true;
       });
     }
@@ -178,8 +182,9 @@ class _AdminSettingsModalState extends State<AdminSettingsModal> {
       return;
     }
 
-    // Save key first so AiService uses this entered key
+    // Save key and model first so AiService uses this configured model
     await EncryptionService.saveAiApiKey(key);
+    await EncryptionService.saveAiProvider(_selectedProvider);
 
     setState(() {
       _isTesting = true;
@@ -187,15 +192,13 @@ class _AdminSettingsModalState extends State<AdminSettingsModal> {
       _testSuccess = null;
     });
 
-    final success = await AiService.testConnection();
+    final result = await AiService.testConnectionDetailed();
     if (!mounted) return;
 
     setState(() {
       _isTesting = false;
-      _testSuccess = success;
-      _testMessage = success
-          ? 'API Connection Successful! Gemini Vision OCR is ready.'
-          : 'Could not connect. Please verify your API Key and internet access.';
+      _testSuccess = result.success;
+      _testMessage = result.message;
     });
   }
 
@@ -409,6 +412,113 @@ class _AdminSettingsModalState extends State<AdminSettingsModal> {
               ),
             ),
           ),
+          const SizedBox(height: 14),
+
+          // Primary Gemini Model Selection Menu
+          Container(
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: AppColors.surfaceContainerLow,
+              borderRadius: BorderRadius.circular(10),
+              border: Border.all(color: AppColors.borders),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Row(
+                  children: [
+                    Icon(Icons.psychology, size: 18, color: AppColors.primaryNavy),
+                    SizedBox(width: 8),
+                    Text(
+                      'AI Engine Model',
+                      style: TextStyle(
+                        fontFamily: 'Manrope',
+                        fontSize: 13.5,
+                        fontWeight: FontWeight.w700,
+                        color: AppColors.primaryNavy,
+                      ),
+                    ),
+                    Spacer(),
+                    Text(
+                      'Google Gemini API',
+                      style: TextStyle(
+                        fontSize: 11,
+                        fontWeight: FontWeight.w600,
+                        color: AppColors.secondaryBlue,
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 8),
+                DropdownButtonFormField<String>(
+                  value: _selectedProvider,
+                  isExpanded: true,
+                  decoration: InputDecoration(
+                    contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
+                    filled: true,
+                    fillColor: Colors.white,
+                    isDense: true,
+                  ),
+                  items: AiService.providerModelIds.keys.map((label) {
+                    final isRecommended = label.contains('Recommended');
+                    return DropdownMenuItem<String>(
+                      value: label,
+                      child: Row(
+                        children: [
+                          Icon(
+                            isRecommended ? Icons.check_circle : Icons.tune,
+                            size: 15,
+                            color: isRecommended ? AppColors.success : AppColors.secondaryText,
+                          ),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: Text(
+                              label,
+                              style: TextStyle(
+                                fontSize: 13,
+                                fontWeight: isRecommended ? FontWeight.w700 : FontWeight.w500,
+                                color: isRecommended ? AppColors.primaryNavy : AppColors.primaryText,
+                              ),
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
+                        ],
+                      ),
+                    );
+                  }).toList(),
+                  onChanged: (val) async {
+                    if (val != null) {
+                      setState(() {
+                        _selectedProvider = val;
+                        _testMessage = null;
+                        _testSuccess = null;
+                      });
+                      await EncryptionService.saveAiProvider(val);
+                    }
+                  },
+                ),
+                const SizedBox(height: 6),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Text(
+                      'Target: models/${AiService.resolveModelId(_selectedProvider)}',
+                      style: const TextStyle(
+                        fontFamily: 'JetBrains Mono',
+                        fontSize: 11,
+                        color: AppColors.secondaryText,
+                      ),
+                    ),
+                    const Text(
+                      'v1beta Multimodal / OCR',
+                      style: TextStyle(fontSize: 10.5, color: AppColors.secondaryText),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
           const SizedBox(height: 12),
 
           // Test Result / Status Display
@@ -495,14 +605,18 @@ class _AdminSettingsModalState extends State<AdminSettingsModal> {
                     labelText: 'AI Engine Model',
                     isDense: true,
                   ),
-                  items: const [
-                    DropdownMenuItem(value: 'Gemini 3.1 Flash-Lite', child: Text('Gemini 3.1 Flash-Lite (Recommended)')),
-                    DropdownMenuItem(value: 'Gemini 3.5 Flash', child: Text('Gemini 3.5 Flash')),
-                    DropdownMenuItem(value: 'OpenAI GPT-4o', child: Text('OpenAI GPT-4o')),
-                    DropdownMenuItem(value: 'Claude 3.5 Sonnet', child: Text('Claude 3.5 Sonnet')),
-                    DropdownMenuItem(value: 'Custom Endpoint', child: Text('Custom Private Backend')),
-                  ],
-                  onChanged: (val) => setState(() => _selectedProvider = val!),
+                  items: AiService.providerModelIds.keys.map((label) {
+                    return DropdownMenuItem<String>(
+                      value: label,
+                      child: Text(label),
+                    );
+                  }).toList(),
+                  onChanged: (val) async {
+                    if (val != null) {
+                      setState(() => _selectedProvider = val);
+                      await EncryptionService.saveAiProvider(val);
+                    }
+                  },
                 ),
                 const SizedBox(height: 12),
 

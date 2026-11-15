@@ -12,25 +12,42 @@ class AiService {
   static const String _geminiApiRoot =
       'https://generativelanguage.googleapis.com/v1beta/models/';
 
-  /// The Gemini model this build targets — the same model the n8n
-  /// valuation workflow uses.
-  static const String _defaultModelId = 'gemini-3.1-flash-lite';
+  /// Default verified working Google Gemini model
+  static const String defaultModelId = 'gemini-1.5-flash';
+  static const String defaultModelLabel = 'Gemini 1.5 Flash (Recommended)';
 
-  /// Admin-panel "AI Engine Model" labels mapped to Gemini model ids.
-  static const Map<String, String> _providerModelIds = {
-    'Gemini 3.1 Flash-Lite': 'gemini-3.1-flash-lite',
-    'Gemini 3.8 Flash': 'gemini-3.8-flash',
-    'Gemini 3.5 Flash': 'gemini-3.5-flash',
+  /// Admin-panel "AI Engine Model" labels mapped to official Gemini model IDs.
+  static const Map<String, String> providerModelIds = {
+    'Gemini 1.5 Flash (Recommended)': 'gemini-1.5-flash',
+    'Gemini 2.0 Flash (Next-Gen)': 'gemini-2.0-flash',
+    'Gemini 1.5 Pro (Deep Reasoning)': 'gemini-1.5-pro',
+    'Gemini 2.0 Flash-Lite': 'gemini-2.0-flash-lite',
   };
 
-  /// Resolves the generateContent endpoint for the provider saved in Admin
-  /// Settings. Falls back to [_defaultModelId] when the saved label has no
-  /// explicit mapping (e.g. OpenAI/Claude/custom entries), so those keep
-  /// working over the Gemini transport instead of silently hitting a
-  /// retired hardcoded model.
-  static Future<String> _endpoint() async {
+  /// Resolves the official Gemini model ID from a saved provider label or direct model ID.
+  static String resolveModelId(String provider) {
+    if (providerModelIds.containsKey(provider)) {
+      return providerModelIds[provider]!;
+    }
+    // Direct model id check (e.g. 'gemini-1.5-flash', 'gemini-2.0-flash')
+    if (provider.startsWith('gemini-') &&
+        !provider.contains('3.1') &&
+        !provider.contains('3.5') &&
+        !provider.contains('3.8')) {
+      return provider;
+    }
+    return defaultModelId;
+  }
+
+  /// Returns the active Gemini model ID currently configured
+  static Future<String> getActiveModelId() async {
     final provider = await EncryptionService.getAiProvider();
-    final model = _providerModelIds[provider] ?? _defaultModelId;
+    return resolveModelId(provider);
+  }
+
+  /// Resolves the generateContent endpoint for the provider saved in Admin Settings.
+  static Future<String> _endpoint() async {
+    final model = await getActiveModelId();
     return '$_geminiApiRoot$model:generateContent';
   }
 
@@ -65,6 +82,98 @@ class AiService {
       return response.statusCode == 200;
     } catch (_) {
       return false;
+    }
+  }
+
+  /// Tests connectivity with rich diagnostics for the Admin panel
+  static Future<({bool success, String message, String model})> testConnectionDetailed() async {
+    final model = await getActiveModelId();
+
+    if (testConnectionOverride != null) {
+      return (
+        success: testConnectionOverride!,
+        message: testConnectionOverride!
+            ? 'API Connection Successful! Model "$model" is ready.'
+            : 'Connection test failed (mock override).',
+        model: model,
+      );
+    }
+
+    final apiKey = await EncryptionService.getAiApiKey();
+    if (apiKey.isEmpty) {
+      return (
+        success: false,
+        message: 'Please enter your Gemini API key first.',
+        model: model,
+      );
+    }
+
+    try {
+      final url = '${await _endpoint()}?key=$apiKey';
+      final response = await http.post(
+        Uri.parse(url),
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode({
+          'contents': [
+            {
+              'parts': [
+                {'text': 'Ping test. Reply with OK.'}
+              ]
+            }
+          ]
+        }),
+      ).timeout(const Duration(seconds: 12));
+
+      if (response.statusCode == 200) {
+        return (
+          success: true,
+          message: 'Connection Successful! Model "$model" is active and responding (HTTP 200 OK).',
+          model: model,
+        );
+      } else if (response.statusCode == 404) {
+        return (
+          success: false,
+          message: 'Model "$model" was not found (HTTP 404). Please switch to "Gemini 1.5 Flash (Recommended)".',
+          model: model,
+        );
+      } else if (response.statusCode == 400 || response.statusCode == 401) {
+        return (
+          success: false,
+          message: 'API Key is invalid or unauthorized (HTTP ${response.statusCode}). Please verify your key on Google AI Studio.',
+          model: model,
+        );
+      } else if (response.statusCode == 429) {
+        return (
+          success: false,
+          message: 'Rate limit or quota reached (HTTP 429). The model is valid; please retry shortly.',
+          model: model,
+        );
+      } else {
+        final snippet = response.body.length > 100 ? response.body.substring(0, 100) : response.body;
+        return (
+          success: false,
+          message: 'Server returned HTTP ${response.statusCode}: $snippet',
+          model: model,
+        );
+      }
+    } on SocketException {
+      return (
+        success: false,
+        message: 'Network error: Unable to reach Google Generative AI servers. Check your internet connection.',
+        model: model,
+      );
+    } on TimeoutException {
+      return (
+        success: false,
+        message: 'Connection timed out (12s). Google servers may be slow or internet connection unstable.',
+        model: model,
+      );
+    } catch (e) {
+      return (
+        success: false,
+        message: 'Connection error: $e',
+        model: model,
+      );
     }
   }
 

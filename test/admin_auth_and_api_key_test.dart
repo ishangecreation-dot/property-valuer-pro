@@ -209,5 +209,50 @@ void main() {
       expect(find.text('AI API Key Settings'), findsOneWidget);
       expect(find.text('Enter Your Gemini API Key'), findsOneWidget);
     });
+
+    test('10. Default model is Gemini 1.5 Flash and resolves to official Google model id', () async {
+      final provider = await EncryptionService.getAiProvider();
+      expect(provider, 'Gemini 1.5 Flash (Recommended)');
+
+      final modelId = AiService.resolveModelId(provider);
+      expect(modelId, 'gemini-1.5-flash');
+
+      final activeModel = await AiService.getActiveModelId();
+      expect(activeModel, 'gemini-1.5-flash');
+    });
+
+    test('11. Obsolete model names (3.1, 3.5, 3.8) migrate safely to Gemini 1.5 Flash', () async {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString('val_secure_ai_provider', 'Gemini 3.1 Flash-Lite');
+
+      final provider = await EncryptionService.getAiProvider();
+      expect(provider, 'Gemini 1.5 Flash (Recommended)');
+      expect(AiService.resolveModelId(provider), 'gemini-1.5-flash');
+    });
+
+    testWidgets('12. Model selection menu is displayed prominently on AI API Key Settings screen', (WidgetTester tester) async {
+      tester.view.physicalSize = const Size(800, 1000);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.resetPhysicalSize);
+
+      await tester.pumpWidget(
+        const MaterialApp(
+          home: Scaffold(
+            body: AdminSettingsModal(),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      // Login
+      await tester.enterText(find.byType(TextField), 'admin@valuer');
+      await tester.tap(find.widgetWithText(ElevatedButton, 'Login'));
+      await tester.pumpAndSettle();
+
+      // Model selection header and options
+      expect(find.text('AI Engine Model'), findsWidgets);
+      expect(find.text('Google Gemini API'), findsOneWidget);
+      expect(find.text('Target: models/gemini-1.5-flash'), findsOneWidget);
+    });
   });
 }

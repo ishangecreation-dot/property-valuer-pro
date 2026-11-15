@@ -98,6 +98,9 @@ class EncryptionService {
     return false;
   }
 
+  /// Standard default AI Model / Provider
+  static const String defaultAiProvider = 'Gemini 1.5 Flash (Recommended)';
+
   /// Saves chosen AI Provider (Gemini 1.5 Flash, Claude, OpenAI)
   static Future<void> saveAiProvider(String provider) async {
     try {
@@ -110,9 +113,18 @@ class EncryptionService {
   static Future<String> getAiProvider() async {
     try {
       final prefs = await SharedPreferences.getInstance();
-      return prefs.getString(_keyAiProvider) ?? 'Gemini 3.1 Flash-Lite';
+      final saved = prefs.getString(_keyAiProvider);
+      // Migrate legacy/non-working model names (e.g. 3.1, 3.5, 3.8) to the verified working Gemini 1.5 Flash
+      if (saved == null ||
+          saved.isEmpty ||
+          saved.contains('3.1') ||
+          saved.contains('3.5') ||
+          saved.contains('3.8')) {
+        return defaultAiProvider;
+      }
+      return saved;
     } catch (_) {
-      return 'Gemini 3.1 Flash-Lite';
+      return defaultAiProvider;
     }
   }
 }
