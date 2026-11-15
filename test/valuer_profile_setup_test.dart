@@ -3,6 +3,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:property_valuer_pro/models/valuer_profile.dart';
 import 'package:property_valuer_pro/core/storage/storage_service.dart';
+import 'package:property_valuer_pro/core/services/ai_service.dart';
 import 'package:property_valuer_pro/features/profile/screens/profile_screen.dart';
 
 void main() {
@@ -10,6 +11,7 @@ void main() {
 
   setUp(() {
     SharedPreferences.setMockInitialValues({});
+    AiService.analyzeReportStyleOverride = null;
   });
 
   group('Valuer Profile Setup – Model & Persistence Tests', () {
@@ -25,8 +27,10 @@ void main() {
       expect(profile.isConfigured, isFalse);
     });
 
-    test('2. ValuerProfile serializes and deserializes all fields correctly', () {
+    test('2. ValuerProfile serializes and deserializes all fields correctly including drafts & AI style', () {
       final original = ValuerProfile(
+        id: 'draft_101',
+        draftName: 'Colombo Chambers',
         valuerName: 'Vlr. J. M. Silva',
         qualifications: 'B.Sc. Estate Management & Valuation (USJP)',
         professionalMembership: 'Associate Member (AIV)',
@@ -37,11 +41,15 @@ void main() {
         contactNumber2: '+94 11 234 5678',
         additionalContactDetails: 'Panel: BOC, People\'s Bank',
         uploadedTemplates: ['Custom_Report.docx'],
+        reportStyleSummary: 'Executive summary with standard per-perch valuation table.',
+        templateStyleNotes: {'Custom_Report.docx': 'Standard layout'},
       );
 
       final jsonMap = original.toJson();
       final restored = ValuerProfile.fromJson(jsonMap);
 
+      expect(restored.id, 'draft_101');
+      expect(restored.draftName, 'Colombo Chambers');
       expect(restored.valuerName, 'Vlr. J. M. Silva');
       expect(restored.qualifications, 'B.Sc. Estate Management & Valuation (USJP)');
       expect(restored.professionalMembership, 'Associate Member (AIV)');
@@ -53,6 +61,8 @@ void main() {
       expect(restored.contactNumber2, '+94 11 234 5678');
       expect(restored.additionalContactDetails, 'Panel: BOC, People\'s Bank');
       expect(restored.uploadedTemplates, contains('Custom_Report.docx'));
+      expect(restored.reportStyleSummary, contains('Executive summary'));
+      expect(restored.templateStyleNotes['Custom_Report.docx'], 'Standard layout');
       expect(restored.isConfigured, isTrue);
     });
 
@@ -75,16 +85,61 @@ void main() {
       expect(reloaded.contactNumber, '+94 71 555 6677');
       expect(reloaded.isConfigured, isTrue);
     });
+
+    test('4. StorageService manages multiple profile drafts (save, load, delete)', () async {
+      final draft1 = ValuerProfile(
+        id: 'draft_colombo',
+        draftName: 'Colombo Chambers',
+        valuerName: 'Vlr. A. Perera',
+        qualifications: 'B.Sc., FIV',
+        registrationNumber: 'REG-001',
+        officeAddress: 'Colombo 03',
+        contactNumber: '0771112233',
+      );
+
+      final draft2 = ValuerProfile(
+        id: 'draft_kandy',
+        draftName: 'Kandy Practice',
+        valuerName: 'Vlr. B. Silva',
+        qualifications: 'MRICS',
+        registrationNumber: 'REG-002',
+        officeAddress: 'Kandy',
+        contactNumber: '0812233445',
+      );
+
+      await StorageService.saveProfileDraft(draft1);
+      await StorageService.saveProfileDraft(draft2);
+
+      final drafts = await StorageService.loadProfileDrafts();
+      expect(drafts.length, 2);
+      expect(drafts.any((d) => d.draftName == 'Colombo Chambers'), isTrue);
+      expect(drafts.any((d) => d.draftName == 'Kandy Practice'), isTrue);
+
+      await StorageService.deleteProfileDraft('draft_colombo');
+      final remaining = await StorageService.loadProfileDrafts();
+      expect(remaining.length, 1);
+      expect(remaining.first.draftName, 'Kandy Practice');
+    });
+
+    test('5. AiService.analyzeReportStyle generates structured style blueprint', () async {
+      final summary = await AiService.analyzeReportStyle(fileName: 'Sample_Valuation_Report.docx');
+      expect(summary, contains('AI Report Style Blueprint'));
+      expect(summary, contains('Executive Summary'));
+      expect(summary, contains('Land Valuation Table'));
+    });
   });
 
   group('Valuer Profile Setup – UI & Screen 2 Tests', () {
     Widget buildTestWidget() {
-      return const MaterialApp(
-        home: ProfileScreen(),
+      return MaterialApp(
+        routes: {
+          '/': (context) => const ProfileScreen(),
+          '/step3': (context) => const Scaffold(body: Text('Step 3 Deed Screen')),
+        },
       );
     }
 
-    testWidgets('4. Screen 2 displays title and universal hints without prefilled personal names', (tester) async {
+    testWidgets('6. Screen 2 displays title and universal hints without prefilled personal names', (tester) async {
       await tester.pumpWidget(buildTestWidget());
       await tester.pumpAndSettle();
 
@@ -104,9 +159,13 @@ void main() {
       // Save Profile Button
       expect(find.byKey(const Key('save_profile_button')), findsOneWidget);
       expect(find.text('Save Profile'), findsOneWidget);
+
+      // Dedicated Save & Next to Deed Button
+      expect(find.byKey(const Key('save_and_next_to_deed_button')), findsOneWidget);
+      expect(find.text('Save & Next to Deed'), findsWidgets);
     });
 
-    testWidgets('5. Tapping Save Profile with empty fields triggers required field validation', (tester) async {
+    testWidgets('7. Tapping Save Profile with empty fields triggers required field validation', (tester) async {
       await tester.pumpWidget(buildTestWidget());
       await tester.pumpAndSettle();
 
@@ -120,7 +179,7 @@ void main() {
       expect(find.text('Please enter your Valuer Name.'), findsOneWidget);
     });
 
-    testWidgets('6. Validation catches missing qualifications, registration, address, and phone', (tester) async {
+    testWidgets('8. Validation catches missing qualifications, registration, address, and phone', (tester) async {
       await tester.pumpWidget(buildTestWidget());
       await tester.pumpAndSettle();
 
@@ -152,7 +211,7 @@ void main() {
       expect(find.text('Please enter Contact Number 1.'), findsOneWidget);
     });
 
-    testWidgets('7. Filling all required fields saves profile successfully and displays confirmation', (tester) async {
+    testWidgets('9. Filling all required fields saves profile successfully and displays confirmation', (tester) async {
       await tester.pumpWidget(buildTestWidget());
       await tester.pumpAndSettle();
 
@@ -162,7 +221,6 @@ void main() {
       await tester.enterText(find.byKey(const Key('registration_number_field')), 'IVSL/A/888');
       await tester.enterText(find.byKey(const Key('office_address_field')), 'No. 100, High Level Road, Nugegoda');
       await tester.enterText(find.byKey(const Key('contact_number_1_field')), '+94 77 000 1122');
-      // Contact Number 2 is optional - leave empty
 
       final saveBtn = find.byKey(const Key('save_profile_button'));
       await tester.ensureVisible(saveBtn);
@@ -183,7 +241,7 @@ void main() {
       expect(saved.isConfigured, isTrue);
     });
 
-    testWidgets('8. Profile automatically loads saved data upon reopening the screen', (tester) async {
+    testWidgets('10. Profile automatically loads saved data upon reopening the screen', (tester) async {
       // Pre-save profile data into storage
       final preSaved = ValuerProfile(
         valuerName: 'Vlr. Sunethra Bandara',
@@ -206,6 +264,45 @@ void main() {
       expect(find.text('No. 78, Peradeniya Road, Kandy'), findsOneWidget);
       expect(find.text('+94 81 223 3445'), findsOneWidget);
       expect(find.text('+94 71 888 9900'), findsOneWidget);
+    });
+
+    testWidgets('11. Dedicated [Save & Next to Deed] button validates, saves draft, and navigates to Step 3', (tester) async {
+      await tester.pumpWidget(buildTestWidget());
+      await tester.pumpAndSettle();
+
+      // Fill required fields
+      await tester.enterText(find.byKey(const Key('valuer_name_field')), 'Vlr. Nimal Dias');
+      await tester.enterText(find.byKey(const Key('qualifications_field')), 'B.Sc. Estate Management, AIV');
+      await tester.enterText(find.byKey(const Key('registration_number_field')), 'IVSL/REG/777');
+      await tester.enterText(find.byKey(const Key('office_address_field')), 'No. 45, Temple Road, Mount Lavinia');
+      await tester.enterText(find.byKey(const Key('contact_number_1_field')), '+94 77 789 0123');
+
+      final nextBtn = find.byKey(const Key('save_and_next_to_deed_button'));
+      await tester.ensureVisible(nextBtn);
+      await tester.tap(nextBtn);
+      await tester.pumpAndSettle();
+
+      // Must have navigated to Step 3
+      expect(find.text('Step 3 Deed Screen'), findsOneWidget);
+
+      // Verify draft saved in storage
+      final drafts = await StorageService.loadProfileDrafts();
+      expect(drafts.isNotEmpty, isTrue);
+      expect(drafts.any((d) => d.valuerName == 'Vlr. Nimal Dias'), isTrue);
+    });
+
+    testWidgets('12. Workflow guide modal opens and lists 10 steps', (tester) async {
+      await tester.pumpWidget(buildTestWidget());
+      await tester.pumpAndSettle();
+
+      final guideBtn = find.text('View 10-Step Valuation Guide');
+      expect(guideBtn, findsOneWidget);
+      await tester.tap(guideBtn);
+      await tester.pumpAndSettle();
+
+      expect(find.text('10-Step Valuation Report Creation Guide'), findsOneWidget);
+      expect(find.text('Dashboard & Project Initialization'), findsOneWidget);
+      expect(find.text('Valuer Profile Setup & AI Style Learning'), findsOneWidget);
     });
   });
 }

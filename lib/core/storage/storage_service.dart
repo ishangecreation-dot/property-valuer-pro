@@ -7,6 +7,7 @@ import '../constants/app_constants.dart';
 
 class StorageService {
   static const String _keyProfile = 'val_user_profile';
+  static const String _keyProfileDrafts = 'val_profile_drafts_list';
   static const String _keyProjects = 'val_projects_list';
   static const String _keyActiveProjectId = 'val_active_project_id';
 
@@ -43,6 +44,59 @@ class StorageService {
   static Future<void> clearProfile() async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.remove(_keyProfile);
+  }
+
+  // Profile Drafts Persistence
+  static Future<void> saveProfileDraft(ValuerProfile profile, {String? draftName}) async {
+    final prefs = await SharedPreferences.getInstance();
+
+    if (profile.id.isEmpty || profile.id == 'draft_default') {
+      profile.id = 'draft_${DateTime.now().millisecondsSinceEpoch}';
+    }
+    if (draftName != null && draftName.trim().isNotEmpty) {
+      profile.draftName = draftName.trim();
+    }
+    profile.lastModified = DateTime.now();
+
+    // Also persist as the active loaded profile
+    await saveProfile(profile);
+
+    // Save into drafts collection
+    final drafts = await loadProfileDrafts();
+    final index = drafts.indexWhere((d) => d.id == profile.id);
+    if (index >= 0) {
+      drafts[index] = profile;
+    } else {
+      drafts.insert(0, profile);
+    }
+
+    final rawList = drafts.map((d) => d.toJson()).toList();
+    await prefs.setString(_keyProfileDrafts, jsonEncode(rawList));
+  }
+
+  static Future<List<ValuerProfile>> loadProfileDrafts() async {
+    final prefs = await SharedPreferences.getInstance();
+    final raw = prefs.getString(_keyProfileDrafts);
+    if (raw == null || raw.isEmpty) return [];
+    try {
+      final List decoded = jsonDecode(raw);
+      return decoded.map((item) => ValuerProfile.fromJson(item)).toList();
+    } catch (_) {
+      return [];
+    }
+  }
+
+  static Future<void> deleteProfileDraft(String draftId) async {
+    final prefs = await SharedPreferences.getInstance();
+    final drafts = await loadProfileDrafts();
+    drafts.removeWhere((d) => d.id == draftId);
+    final rawList = drafts.map((d) => d.toJson()).toList();
+    await prefs.setString(_keyProfileDrafts, jsonEncode(rawList));
+  }
+
+  static Future<void> clearProfileDrafts() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.remove(_keyProfileDrafts);
   }
 
   // Projects Persistence

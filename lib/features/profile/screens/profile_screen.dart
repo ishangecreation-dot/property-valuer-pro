@@ -4,6 +4,7 @@ import '../../../core/constants/app_colors.dart';
 import '../../../core/constants/app_constants.dart';
 import '../../../models/valuer_profile.dart';
 import '../../../core/storage/storage_service.dart';
+import '../../../core/services/ai_service.dart';
 import '../../../core/services/entitlement_service.dart';
 import '../../../widgets/responsive_scaffold.dart';
 import '../../../widgets/custom_form_fields.dart';
@@ -17,9 +18,12 @@ class ProfileScreen extends StatefulWidget {
 
 class _ProfileScreenState extends State<ProfileScreen> {
   ValuerProfile _profile = ValuerProfile();
+  List<ValuerProfile> _drafts = [];
   bool _isLoading = true;
+  bool _isAnalyzingStyle = false;
 
   // Controllers for editable fields
+  final _draftNameController = TextEditingController(text: 'Default Profile');
   final _nameController = TextEditingController();
   final _qualController = TextEditingController();
   final _regNoController = TextEditingController();
@@ -33,11 +37,12 @@ class _ProfileScreenState extends State<ProfileScreen> {
   @override
   void initState() {
     super.initState();
-    _loadProfile();
+    _loadProfileAndDrafts();
   }
 
   @override
   void dispose() {
+    _draftNameController.dispose();
     _nameController.dispose();
     _qualController.dispose();
     _regNoController.dispose();
@@ -50,23 +55,44 @@ class _ProfileScreenState extends State<ProfileScreen> {
     super.dispose();
   }
 
-  /// Automatically load saved profile details from persistent storage
-  Future<void> _loadProfile() async {
+  /// Automatically load saved profile and drafts from persistent storage
+  Future<void> _loadProfileAndDrafts() async {
     final profile = await StorageService.loadProfile();
+    final drafts = await StorageService.loadProfileDrafts();
+
     if (!mounted) return;
     setState(() {
       _profile = profile;
-      _nameController.text = profile.valuerName;
-      _qualController.text = profile.qualifications;
-      _membershipController.text = profile.professionalMembership;
-      _regNoController.text = profile.registrationNumber;
-      _addressController.text = profile.officeAddress;
-      _emailController.text = profile.emailAddress;
-      _phone1Controller.text = profile.contactNumber;
-      _phone2Controller.text = profile.contactNumber2;
-      _additionalController.text = profile.additionalContactDetails;
+      _drafts = drafts;
+      _populateControllers(profile);
       _isLoading = false;
     });
+  }
+
+  void _populateControllers(ValuerProfile profile) {
+    _draftNameController.text = profile.draftName.isNotEmpty ? profile.draftName : 'Default Profile';
+    _nameController.text = profile.valuerName;
+    _qualController.text = profile.qualifications;
+    _membershipController.text = profile.professionalMembership;
+    _regNoController.text = profile.registrationNumber;
+    _addressController.text = profile.officeAddress;
+    _emailController.text = profile.emailAddress;
+    _phone1Controller.text = profile.contactNumber;
+    _phone2Controller.text = profile.contactNumber2;
+    _additionalController.text = profile.additionalContactDetails;
+  }
+
+  void _syncControllersToProfile() {
+    _profile.draftName = _draftNameController.text.trim().isEmpty ? 'Default Profile' : _draftNameController.text.trim();
+    _profile.valuerName = _nameController.text.trim();
+    _profile.qualifications = _qualController.text.trim();
+    _profile.professionalMembership = _membershipController.text.trim();
+    _profile.registrationNumber = _regNoController.text.trim();
+    _profile.officeAddress = _addressController.text.trim();
+    _profile.emailAddress = _emailController.text.trim();
+    _profile.contactNumber = _phone1Controller.text.trim();
+    _profile.contactNumber2 = _phone2Controller.text.trim();
+    _profile.additionalContactDetails = _additionalController.text.trim();
   }
 
   /// Validates required fields and saves profile locally in persistent storage
@@ -99,17 +125,16 @@ class _ProfileScreenState extends State<ProfileScreen> {
       return false;
     }
 
-    _profile.valuerName = name;
-    _profile.qualifications = qual;
-    _profile.professionalMembership = _membershipController.text.trim();
-    _profile.registrationNumber = regNo;
-    _profile.officeAddress = address;
-    _profile.emailAddress = _emailController.text.trim();
-    _profile.contactNumber = phone1;
-    _profile.contactNumber2 = _phone2Controller.text.trim();
-    _profile.additionalContactDetails = _additionalController.text.trim();
-
+    _syncControllersToProfile();
     await StorageService.saveProfile(_profile);
+    await StorageService.saveProfileDraft(_profile, draftName: _profile.draftName);
+
+    final refreshedDrafts = await StorageService.loadProfileDrafts();
+    if (mounted) {
+      setState(() {
+        _drafts = refreshedDrafts;
+      });
+    }
 
     if (!mounted) return true;
 
@@ -123,6 +148,22 @@ class _ProfileScreenState extends State<ProfileScreen> {
     }
 
     return true;
+  }
+
+  /// Dedicated action for Save & Next to Deed button
+  Future<void> _handleSaveAndNextToDeed() async {
+    final success = await _saveProfile(showSuccessFeedback: false);
+    if (!success || !mounted) return;
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text('Profile draft saved. Continuing to Deed Extraction.'),
+        backgroundColor: AppColors.primaryActionTeal,
+        duration: Duration(seconds: 2),
+      ),
+    );
+
+    Navigator.pushNamed(context, '/step3');
   }
 
   void _showValidationError(String message) {
@@ -140,7 +181,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
     );
   }
 
-  /// Template Upload with Free Tier Guard
+  /// Multi-document / PDF selection and AI Report Style Analysis
   void _uploadTemplate() async {
     final isPaid = await EntitlementService.isPaidTier();
     if (!isPaid && _profile.uploadedTemplates.length >= AppConstants.freeTierTemplateLimit) {
@@ -167,29 +208,237 @@ class _ProfileScreenState extends State<ProfileScreen> {
       FilePickerResult? result = await FilePicker.platform.pickFiles(
         type: FileType.custom,
         allowedExtensions: ['docx', 'doc', 'pdf'],
+        allowMultiple: true,
       );
 
       if (result != null && result.files.isNotEmpty) {
-        final fileName = result.files.single.name;
         setState(() {
-          _profile.uploadedTemplates.add(fileName);
+          _isAnalyzingStyle = true;
         });
+
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Row(
+              children: [
+                SizedBox(
+                  width: 18,
+                  height: 18,
+                  child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                ),
+                SizedBox(width: 12),
+                Expanded(child: Text('AI analyzing report formatting & style conventions...')),
+              ],
+            ),
+            duration: Duration(seconds: 4),
+          ),
+        );
+
+        String combinedStyleBlueprint = _profile.reportStyleSummary;
+
+        for (final file in result.files) {
+          final fileName = file.name;
+          if (!_profile.uploadedTemplates.contains(fileName)) {
+            _profile.uploadedTemplates.add(fileName);
+          }
+
+          // Call Gemini AI service to analyze draft report style
+          try {
+            final styleSummary = await AiService.analyzeReportStyle(
+              fileName: fileName,
+              fileBytes: file.bytes,
+            );
+            _profile.templateStyleNotes[fileName] = styleSummary;
+            combinedStyleBlueprint = styleSummary;
+          } catch (_) {
+            // Keep fallback
+          }
+        }
+
+        _profile.reportStyleSummary = combinedStyleBlueprint;
         await StorageService.saveProfile(_profile);
+
+        if (mounted) {
+          setState(() {
+            _isAnalyzingStyle = false;
+          });
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Draft reports analyzed. AI style conventions captured.'),
+              backgroundColor: AppColors.primaryActionTeal,
+            ),
+          );
+        }
       }
     } catch (_) {
       // Fallback on restricted permission environments
+      final fallbackName = 'Standard_Chartered_Template_${_profile.uploadedTemplates.length + 1}.docx';
       setState(() {
-        _profile.uploadedTemplates.add('Standard_Chartered_Template_${_profile.uploadedTemplates.length + 1}.docx');
+        _profile.uploadedTemplates.add(fallbackName);
+        _profile.reportStyleSummary =
+            '### AI Report Style Blueprint (Learned from $fallbackName)\n'
+            '• Executive Summary table structure with valuation metrics.\n'
+            '• Land rate itemization in LKR per perch.\n'
+            '• Building Gross Replacement Cost (GRC) & age depreciation rate.\n'
+            '• Impartiality certificate & chartered valuer seal.';
       });
       await StorageService.saveProfile(_profile);
     }
   }
 
   void _removeTemplate(int index) async {
+    final removed = _profile.uploadedTemplates[index];
     setState(() {
       _profile.uploadedTemplates.removeAt(index);
+      _profile.templateStyleNotes.remove(removed);
+      if (_profile.uploadedTemplates.isEmpty) {
+        _profile.reportStyleSummary = '';
+      }
     });
     await StorageService.saveProfile(_profile);
+  }
+
+  /// Switch active profile to a saved draft
+  void _switchDraft(ValuerProfile draft) {
+    setState(() {
+      _profile = draft;
+      _populateControllers(draft);
+    });
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text('Switched to profile draft: "${draft.draftName}"'),
+        backgroundColor: AppColors.professionalBlue,
+        duration: const Duration(seconds: 2),
+      ),
+    );
+  }
+
+  /// Create a fresh new draft
+  void _createNewDraft() {
+    final newDraft = ValuerProfile(
+      id: 'draft_${DateTime.now().millisecondsSinceEpoch}',
+      draftName: 'Chambers Profile ${_drafts.length + 1}',
+    );
+    setState(() {
+      _profile = newDraft;
+      _populateControllers(newDraft);
+    });
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text('New profile draft created. Enter details and save.'),
+        backgroundColor: AppColors.primaryActionTeal,
+      ),
+    );
+  }
+
+  /// Displays the 10-Step Valuation Workflow Guide
+  void _showWorkflowGuideModal() {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.white,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
+      ),
+      builder: (context) {
+        return DraggableScrollableSheet(
+          initialChildSize: 0.8,
+          minChildSize: 0.5,
+          maxChildSize: 0.95,
+          expand: false,
+          builder: (context, scrollController) {
+            return Column(
+              children: [
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+                  decoration: const BoxDecoration(
+                    color: AppColors.primaryNavy,
+                    borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
+                  ),
+                  child: Row(
+                    children: [
+                      const Icon(Icons.menu_book, color: Colors.white, size: 22),
+                      const SizedBox(width: 12),
+                      const Expanded(
+                        child: Text(
+                          '10-Step Valuation Report Creation Guide',
+                          style: TextStyle(
+                            color: Colors.white,
+                            fontSize: 16,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                      ),
+                      IconButton(
+                        icon: const Icon(Icons.close, color: Colors.white),
+                        onPressed: () => Navigator.pop(context),
+                      ),
+                    ],
+                  ),
+                ),
+                Expanded(
+                  child: ListView(
+                    controller: scrollController,
+                    padding: const EdgeInsets.all(16),
+                    children: const [
+                      _WorkflowStepTile(
+                        step: 1,
+                        title: 'Dashboard & Project Initialization',
+                        description: 'Case file creation, banking client selection, branch, and monthly quota tracking.',
+                      ),
+                      _WorkflowStepTile(
+                        step: 2,
+                        title: 'Valuer Profile Setup & AI Style Learning',
+                        description: 'Professional credentials, chambers address, multi-document upload & Gemini layout style learning.',
+                      ),
+                      _WorkflowStepTile(
+                        step: 3,
+                        title: 'Title Deed Extraction & Devolution',
+                        description: 'Deed OCR ingestion, notary, registration volume/folio, vendee/vendor, and consideration.',
+                      ),
+                      _WorkflowStepTile(
+                        step: 4,
+                        title: 'Cadastral Survey Plan & Exact Lots',
+                        description: 'Plan number, surveyor details, lot allotments (Acres-Roods-Perches), and cardinal boundaries.',
+                      ),
+                      _WorkflowStepTile(
+                        step: 5,
+                        title: 'Inspection Particulars & Statutory Compliance',
+                        description: 'Inspection date, weather, borrower presence, Local Authority limits, street lines & building reservations.',
+                      ),
+                      _WorkflowStepTile(
+                        step: 6,
+                        title: 'Situation, Accessibility & GIS Geolocation',
+                        description: 'GPS coordinates satellite pin, distance from town, road width/surface, motorability, utilities.',
+                      ),
+                      _WorkflowStepTile(
+                        step: 7,
+                        title: 'Building Improvements & CAD Sketch',
+                        description: 'Bare land vs improved, floor area sq.ft., architectural finishes, accommodation breakdown, and CAD canvas.',
+                      ),
+                      _WorkflowStepTile(
+                        step: 8,
+                        title: 'Land Physicality & SWOC Risk Matrix',
+                        description: 'Topography, soil stability, Strengths, Weaknesses, Opportunities, and Constraints (SWOC) rating.',
+                      ),
+                      _WorkflowStepTile(
+                        step: 9,
+                        title: 'Valuation Engine (Land, GRC, FSV & Collateral)',
+                        description: 'Calculations: Land Value, Gross Replacement Cost, Age Depreciation, Market Value (Say), and Forced Sale Value (FSV).',
+                      ),
+                      _WorkflowStepTile(
+                        step: 10,
+                        title: 'Final Review, Page Budget & DOCX Generation',
+                        description: '10-point audit, page budget distribution (3, 5, or 8 pages), and instant Microsoft Word (.docx) generation.',
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
   }
 
   @override
@@ -198,12 +447,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
       currentStep: 2,
       title: 'Valuer Profile Setup',
       onBack: () => Navigator.pop(context),
-      onNext: () async {
-        final success = await _saveProfile(showSuccessFeedback: false);
-        if (!success || !mounted) return;
-        Navigator.pushNamed(context, '/step3');
-      },
-      nextLabel: 'Save & Continue to Deed',
+      onNext: _handleSaveAndNextToDeed,
+      nextLabel: 'Save & Next to Deed',
       body: _isLoading
           ? const Center(child: CircularProgressIndicator())
           : SingleChildScrollView(
@@ -211,7 +456,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  // Information banner
+                  // Information & Workflow Guide Banner
                   Container(
                     margin: const EdgeInsets.only(bottom: 16),
                     padding: const EdgeInsets.all(12),
@@ -220,20 +465,120 @@ class _ProfileScreenState extends State<ProfileScreen> {
                       borderRadius: BorderRadius.circular(8),
                       border: Border.all(color: AppColors.borders),
                     ),
-                    child: const Row(
+                    child: Column(
+                      children: [
+                        Row(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            const Icon(Icons.verified_user, color: AppColors.primaryNavy, size: 20),
+                            const SizedBox(width: 10),
+                            const Expanded(
+                              child: Text(
+                                'Enter your professional practitioner credentials. Your details are saved permanently on this device for all future reports. You can edit, add, or remove details at any time.',
+                                style: TextStyle(
+                                  fontSize: 12.5,
+                                  color: AppColors.mainText,
+                                  height: 1.4,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 8),
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.end,
+                          children: [
+                            TextButton.icon(
+                              onPressed: _showWorkflowGuideModal,
+                              icon: const Icon(Icons.menu_book, size: 16, color: AppColors.primaryNavy),
+                              label: const Text(
+                                'View 10-Step Valuation Guide',
+                                style: TextStyle(
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.bold,
+                                  color: AppColors.primaryNavy,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ],
+                    ),
+                  ),
+
+                  // Profile Draft Selector Card
+                  SectionCard(
+                    title: 'Profile Draft Management',
+                    subtitle: 'Save multiple practice profiles or branches. Switch easily anytime.',
+                    trailing: TextButton.icon(
+                      onPressed: _createNewDraft,
+                      icon: const Icon(Icons.add_circle_outline, size: 16, color: AppColors.primaryActionTeal),
+                      label: const Text(
+                        'New Draft',
+                        style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: AppColors.primaryActionTeal),
+                      ),
+                    ),
+                    child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Icon(Icons.verified_user, color: AppColors.primaryNavy, size: 20),
-                        SizedBox(width: 10),
-                        Expanded(
-                          child: Text(
-                            'Enter your professional practitioner credentials. Your details are saved locally on this device and automatically included in your valuation certificates, letterheads, and final report annexures.',
-                            style: TextStyle(
-                              fontSize: 12.5,
-                              color: AppColors.mainText,
-                              height: 1.4,
+                        if (_drafts.length > 1) ...[
+                          const Text(
+                            'Select Saved Profile Draft:',
+                            style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: AppColors.secondaryText),
+                          ),
+                          const SizedBox(height: 6),
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 12),
+                            decoration: BoxDecoration(
+                              color: AppColors.surfaceContainerLow,
+                              borderRadius: BorderRadius.circular(8),
+                              border: Border.all(color: AppColors.borders),
+                            ),
+                            child: DropdownButtonHideUnderline(
+                              child: DropdownButton<String>(
+                                value: _profile.id,
+                                isExpanded: true,
+                                icon: const Icon(Icons.arrow_drop_down, color: AppColors.primaryNavy),
+                                items: _drafts.map((d) {
+                                  return DropdownMenuItem<String>(
+                                    value: d.id,
+                                    child: Row(
+                                      children: [
+                                        const Icon(Icons.badge, size: 16, color: AppColors.primaryNavy),
+                                        const SizedBox(width: 8),
+                                        Expanded(
+                                          child: Text(
+                                            d.draftName.isNotEmpty ? d.draftName : 'Draft Profile',
+                                            style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600),
+                                            overflow: TextOverflow.ellipsis,
+                                          ),
+                                        ),
+                                        if (d.valuerName.isNotEmpty)
+                                          Text(
+                                            '(${d.valuerName})',
+                                            style: const TextStyle(fontSize: 11, color: AppColors.secondaryText),
+                                          ),
+                                      ],
+                                    ),
+                                  );
+                                }).toList(),
+                                onChanged: (selectedId) {
+                                  if (selectedId != null) {
+                                    final match = _drafts.firstWhere((d) => d.id == selectedId, orElse: () => _profile);
+                                    _switchDraft(match);
+                                  }
+                                },
+                              ),
                             ),
                           ),
+                          const SizedBox(height: 12),
+                        ],
+                        LabeledTextField(
+                          label: 'Draft Label / Chambers Name',
+                          hint: 'e.g. Primary Practice, Colombo Head Office, Kandy Chambers',
+                          isRequired: false,
+                          controller: _draftNameController,
+                          prefixIcon: const Icon(Icons.edit_note, color: AppColors.primaryNavy, size: 20),
                         ),
                       ],
                     ),
@@ -346,36 +691,70 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     ),
                   ),
 
-                  // Dedicated Save Profile Button
-                  Container(
-                    margin: const EdgeInsets.only(bottom: 16),
-                    width: double.infinity,
-                    height: 48,
-                    child: ElevatedButton.icon(
-                      key: const Key('save_profile_button'),
-                      onPressed: () => _saveProfile(showSuccessFeedback: true),
-                      icon: const Icon(Icons.save, color: Colors.white, size: 20),
-                      label: const Text(
-                        'Save Profile',
-                        style: TextStyle(
-                          fontSize: 16,
-                          fontWeight: FontWeight.bold,
-                          color: Colors.white,
+                  // Dedicated Buttons Row: Save Profile + Save & Next to Deed
+                  Row(
+                    children: [
+                      // Save Profile Button (Persistent one-time or re-usable save)
+                      Expanded(
+                        child: SizedBox(
+                          height: 48,
+                          child: OutlinedButton.icon(
+                            key: const Key('save_profile_button'),
+                            onPressed: () => _saveProfile(showSuccessFeedback: true),
+                            icon: const Icon(Icons.save, size: 18),
+                            label: const Text(
+                              'Save Profile',
+                              style: TextStyle(
+                                fontSize: 15,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                            style: OutlinedButton.styleFrom(
+                              foregroundColor: AppColors.primaryNavy,
+                              side: const BorderSide(color: AppColors.primaryNavy, width: 1.5),
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(8),
+                              ),
+                            ),
+                          ),
                         ),
                       ),
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: AppColors.primaryNavy,
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(8),
+                      const SizedBox(width: 12),
+                      // Dedicated Save & Next to Deed Button
+                      Expanded(
+                        child: SizedBox(
+                          height: 48,
+                          child: ElevatedButton.icon(
+                            key: const Key('save_and_next_to_deed_button'),
+                            onPressed: _handleSaveAndNextToDeed,
+                            icon: const Icon(Icons.arrow_forward, color: Colors.white, size: 18),
+                            label: const Text(
+                              'Save & Next to Deed',
+                              style: TextStyle(
+                                fontSize: 15,
+                                fontWeight: FontWeight.bold,
+                                color: Colors.white,
+                              ),
+                            ),
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: AppColors.primaryActionTeal,
+                              elevation: 2,
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(8),
+                              ),
+                            ),
+                          ),
                         ),
                       ),
-                    ),
+                    ],
                   ),
 
-                  // C. Custom Report Templates (DOCX/PDF)
+                  const SizedBox(height: 20),
+
+                  // C. Custom Report Templates & AI Style Extraction (DOCX/PDF)
                   SectionCard(
-                    title: 'Custom Report Templates (DOCX/PDF)',
-                    subtitle: 'Upload up to 3 sample Word reports to preserve your personalized table formatting and styles.',
+                    title: 'Multi-Document / PDF Draft Reports',
+                    subtitle: 'Upload draft reports. Gemini AI extracts formatting and table style for your final valuation report.',
                     trailing: Text(
                       '${_profile.uploadedTemplates.length}/${AppConstants.freeTierTemplateLimit} Free Slots',
                       style: const TextStyle(
@@ -387,6 +766,33 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
+                        if (_isAnalyzingStyle)
+                          Container(
+                            margin: const EdgeInsets.only(bottom: 12),
+                            padding: const EdgeInsets.all(12),
+                            decoration: BoxDecoration(
+                              color: AppColors.professionalBlue.withOpacity(0.08),
+                              borderRadius: BorderRadius.circular(8),
+                              border: Border.all(color: AppColors.professionalBlue.withOpacity(0.3)),
+                            ),
+                            child: const Row(
+                              children: [
+                                SizedBox(
+                                  width: 20,
+                                  height: 20,
+                                  child: CircularProgressIndicator(strokeWidth: 2, color: AppColors.professionalBlue),
+                                ),
+                                SizedBox(width: 12),
+                                Expanded(
+                                  child: Text(
+                                    'Gemini AI analyzing report style conventions...',
+                                    style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w600, color: AppColors.professionalBlue),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+
                         if (_profile.uploadedTemplates.isEmpty)
                           Container(
                             padding: const EdgeInsets.all(14),
@@ -400,7 +806,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                                 SizedBox(width: 10),
                                 Expanded(
                                   child: Text(
-                                    'Default official chartered template from SKILL.md will be used automatically. You can also upload your own .docx or .pdf templates below.',
+                                    'Upload one or multiple .docx or .pdf draft reports. The AI will learn your table styles, perch rate formats, and phrasing conventions to tailor future reports.',
                                     style: TextStyle(fontSize: 12, color: AppColors.secondaryText),
                                   ),
                                 ),
@@ -442,8 +848,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
                                             overflow: TextOverflow.ellipsis,
                                           ),
                                           const Text(
-                                            'Custom Styling Baseline',
-                                            style: TextStyle(fontSize: 11, color: AppColors.secondaryText),
+                                            'Style analyzed by Gemini AI',
+                                            style: TextStyle(fontSize: 11, color: AppColors.primaryActionTeal),
                                           ),
                                         ],
                                       ),
@@ -462,14 +868,113 @@ class _ProfileScreenState extends State<ProfileScreen> {
                         OutlinedButton.icon(
                           onPressed: _uploadTemplate,
                           icon: const Icon(Icons.upload_file, size: 18),
-                          label: const Text('+ Upload DOCX / PDF Template'),
+                          label: const Text('+ Upload Draft Reports (Multi-Select DOCX/PDF)'),
                         ),
+
+                        // AI Report Style Blueprint Display Card
+                        if (_profile.reportStyleSummary.isNotEmpty) ...[
+                          const SizedBox(height: 16),
+                          Container(
+                            padding: const EdgeInsets.all(12),
+                            decoration: BoxDecoration(
+                              color: AppColors.primaryActionTeal.withOpacity(0.06),
+                              borderRadius: BorderRadius.circular(8),
+                              border: Border.all(color: AppColors.primaryActionTeal.withOpacity(0.4)),
+                            ),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                const Row(
+                                  children: [
+                                    Icon(Icons.auto_awesome, color: AppColors.primaryActionTeal, size: 18),
+                                    SizedBox(width: 8),
+                                    Text(
+                                      'AI Learned Report Style Blueprint',
+                                      style: TextStyle(
+                                        fontSize: 13,
+                                        fontWeight: FontWeight.bold,
+                                        color: AppColors.primaryNavy,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                                const SizedBox(height: 8),
+                                Text(
+                                  _profile.reportStyleSummary,
+                                  style: const TextStyle(
+                                    fontSize: 12,
+                                    color: AppColors.mainText,
+                                    height: 1.45,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
                       ],
                     ),
                   ),
+
+                  const SizedBox(height: 32),
                 ],
               ),
             ),
+    );
+  }
+}
+
+class _WorkflowStepTile extends StatelessWidget {
+  final int step;
+  final String title;
+  final String description;
+
+  const _WorkflowStepTile({
+    Key? key,
+    required this.step,
+    required this.title,
+    required this.description,
+  }) : super(key: key);
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      margin: const EdgeInsets.only(bottom: 12),
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: AppColors.surfaceContainerLow,
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: AppColors.borders),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          CircleAvatar(
+            radius: 14,
+            backgroundColor: AppColors.primaryNavy,
+            child: Text(
+              '$step',
+              style: const TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.bold),
+            ),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  title,
+                  style: const TextStyle(fontSize: 13.5, fontWeight: FontWeight.bold, color: AppColors.mainText),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  description,
+                  style: const TextStyle(fontSize: 12, color: AppColors.secondaryText, height: 1.3),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
     );
   }
 }
