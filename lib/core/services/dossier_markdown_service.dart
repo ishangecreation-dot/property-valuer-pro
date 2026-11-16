@@ -171,7 +171,7 @@ class DossierMarkdownService {
         for (int i = 0; i < project.buildingDetails.buildings.length; i++) {
           final b = project.buildingDetails.buildings[i];
           buffer.writeln('### Improvement #${i + 1}: ${b.buildingName}');
-          buffer.writeln('- **Gross Floor Area:** ${b.totalAreaSqFt} sq.ft. (GF: ${b.groundFloorAreaSqFt} sq.ft., UF: ${b.upperFloorAreaSqFt} sq.ft.)');
+          buffer.writeln('- **Gross Floor Area:** ${b.totalFloorAreaSqFt} sq.ft. (GF: ${b.groundFloorAreaSqFt} sq.ft., UF: ${b.upperFloorAreaSqFt} sq.ft.)');
           buffer.writeln('- **Estimated Age:** ${b.ageYears} years | **Structural Condition:** ${b.structuralCondition} | **Occupancy:** ${b.occupancy}');
           buffer.writeln('- **Roof:** ${b.roofType} | **Walls:** ${b.wallType} | **Floors:** ${b.floorType} | **Doors/Windows:** ${b.doorsWindows} | **Baths:** ${b.bathFittings}');
           final rooms = b.roomCounters.where((r) => r.count > 0).map((r) => '${r.name}: ${r.count}').join(', ');
@@ -210,7 +210,7 @@ class DossierMarkdownService {
       final totalPerches = project.surveyPlanData.selectedTotalPerches > 0
           ? project.surveyPlanData.selectedTotalPerches
           : 15.0;
-      final totalBuildingSqFt = project.buildingDetails.totalFloorArea;
+      final totalBuildingSqFt = project.buildingDetails.totalBuiltUpArea;
       final hasBuilding = !project.buildingSketch.isBareLand && totalBuildingSqFt > 0;
 
       final landVal = vd.computeLandValue(totalPerches);
@@ -218,8 +218,8 @@ class DossierMarkdownService {
       final depVal = vd.computeDepreciation(grcVal);
       final netBuildingVal = vd.computeDepreciatedBuildingValue(grcVal, depVal);
       final rawTotal = landVal + netBuildingVal;
-      final sayVal = vd.computeMarketValueSay(rawTotal);
-      final fsvVal = vd.computeForcedSaleValue(sayVal);
+      final sayVal = vd.computeSayValue(rawTotal);
+      final fsvVal = vd.computeFsv(sayVal);
 
       buffer.writeln('### Land Valuation');
       buffer.writeln('- **Evaluated Extent:** ${totalPerches.toStringAsFixed(2)} Perches');
