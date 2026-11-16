@@ -80,17 +80,16 @@ class DossierMarkdownService {
     if (project != null && project.deedData.deedNumber.isNotEmpty) {
       final d = project.deedData;
       buffer.writeln('- **Deed Number:** ${d.deedNumber}');
-      buffer.writeln('- **Date of Execution:** ${d.dateOfExecution}');
-      buffer.writeln('- **Attesting Notary Public:** ${d.notaryName}');
-      buffer.writeln('- **Notary Judicial Zone / Station:** ${d.judicialZone}');
+      buffer.writeln('- **Date of Execution:** ${d.executionDate}');
+      buffer.writeln('- **Attesting Notary Public:** ${d.notaryPublicName}');
+      buffer.writeln('- **Notary Station:** ${d.notaryPublicStation}');
       buffer.writeln('- **Land Registry Office:** ${d.landRegistry}');
-      buffer.writeln('- **Registration Folio:** Volume ${d.volumeNumber}, Folio ${d.folioNumber} (Day Book: ${d.dayBookNumber})');
-      buffer.writeln('- **Current Owner / Vendee:** ${d.purchaserName}');
-      if (d.purchaserNic.isNotEmpty) buffer.writeln('- **Vendee NIC:** ${d.purchaserNic}');
-      if (d.purchaserAddress.isNotEmpty) buffer.writeln('- **Vendee Address:** ${d.purchaserAddress}');
-      buffer.writeln('- **Prior Vendor (Seller):** ${d.sellerName}');
-      buffer.writeln('- **Prior Consideration Amount:** LKR ${_currencyFormat.format(d.priorConsiderationAmount)}');
-      if (d.priorDeedReference.isNotEmpty) buffer.writeln('- **Prior Deed Reference:** ${d.priorDeedReference}');
+      buffer.writeln('- **Registration Folio:** Folio ${d.registerFolioNumber} (Day Book: ${d.dayBookNumber}, Date: ${d.registrationDate})');
+      buffer.writeln('- **Current Owner / Vendee:** ${d.vendeeName}');
+      if (d.vendeeNic.isNotEmpty) buffer.writeln('- **Vendee NIC:** ${d.vendeeNic}');
+      if (d.vendeeAddress.isNotEmpty) buffer.writeln('- **Vendee Address:** ${d.vendeeAddress}');
+      buffer.writeln('- **Prior Vendor (Seller):** ${d.vendorName}');
+      buffer.writeln('- **Purchase Consideration Amount:** LKR ${_currencyFormat.format(d.purchaseConsideration)}');
     } else {
       buffer.writeln('*Title Deed extraction pending execution in Step 3.*');
     }
@@ -104,6 +103,7 @@ class DossierMarkdownService {
       final sp = project.surveyPlanData;
       buffer.writeln('- **Plan Number:** ${sp.planNumber}');
       buffer.writeln('- **Date of Survey:** ${sp.surveyDate}');
+      if (sp.certificationDate.isNotEmpty) buffer.writeln('- **Certification Date:** ${sp.certificationDate}');
       buffer.writeln('- **Licensed Surveyor:** ${sp.surveyorName} (Reg: ${sp.surveyorRegistrationNumber})');
       buffer.writeln('- **Land / Estate Name:** ${sp.landName}');
       if (sp.priorPlanReference.isNotEmpty) buffer.writeln('- **Prior Plan Reference:** ${sp.priorPlanReference}');
@@ -125,13 +125,17 @@ class DossierMarkdownService {
     buffer.writeln('## 5. Purpose of Valuation & Site Inspection (Step 5)');
     if (project != null && project.inspectionData.dateOfInspection.isNotEmpty) {
       final ins = project.inspectionData;
-      buffer.writeln('- **Valuation Purpose:** ${ins.purposeOfValuation}');
+      buffer.writeln('- **Valuation Purpose:** ${ins.valuationPurpose}');
       buffer.writeln('- **Date of Inspection:** ${ins.dateOfInspection}');
-      buffer.writeln('- **Weather Conditions:** ${ins.weatherCondition}');
-      buffer.writeln('- **Persons Present on Site:** ${ins.presentAtInspection}');
-      buffer.writeln('- **Local Authority Jurisdiction:** ${ins.localAuthority}');
-      buffer.writeln('- **Street Line Conformity:** ${ins.streetLineConformity}');
-      buffer.writeln('- **Building Limits & Reservations:** ${ins.buildingLineConformity}');
+      buffer.writeln('- **Target Institution / Branch:** ${ins.targetInstitution} (${ins.bankBranch})');
+      buffer.writeln('- **Administrative Limits:** Village: ${ins.village}, GN: ${ins.gnDivision}, Korale: ${ins.korale}, DS: ${ins.divisionalSecretariat}');
+      buffer.writeln('- **Local Authority Jurisdiction:** ${ins.localAuthority} (Assessment No: ${ins.assessmentNumber})');
+      if (ins.statutoryCompliances.isNotEmpty) {
+        buffer.writeln('- **Statutory Planning Compliances:**');
+        for (final stat in ins.statutoryCompliances) {
+          buffer.writeln('  - ${stat.name}: ${stat.status} ${stat.remarks.isNotEmpty ? "(${stat.remarks})" : ""}');
+        }
+      }
     } else {
       buffer.writeln('*Site inspection particulars pending execution in Step 5.*');
     }
@@ -144,16 +148,12 @@ class DossierMarkdownService {
     if (project != null && project.locationData.nearestTown.isNotEmpty) {
       final loc = project.locationData;
       buffer.writeln('- **GPS Coordinates:** Latitude ${loc.latitude.toStringAsFixed(6)}, Longitude ${loc.longitude.toStringAsFixed(6)}');
-      buffer.writeln('- **Locality & Distance:** ${loc.distanceFromTown} km from ${loc.nearestTown}');
-      buffer.writeln('- **Frontage Road Width:** ${loc.roadWidthFeet} ft');
-      buffer.writeln('- **Road Surface:** ${loc.roadType}');
-      buffer.writeln('- **Motorable Access Level:** ${loc.accessType}');
-      buffer.writeln('- **Public Utilities:** '
-          'CEB Electricity: ${loc.hasElectricity ? "Available" : "Not Available"}, '
-          'NWSDB Pipe Water: ${loc.hasPipeWater ? "Available" : "Not Available"}, '
-          'Telecom: ${loc.hasTelecom ? "Available" : "Not Available"}, '
-          'Drainage: ${loc.hasDrainage ? "Available" : "Not Available"}');
-      if (loc.directionNotes.isNotEmpty) buffer.writeln('- **Access Directions:** ${loc.directionNotes}');
+      buffer.writeln('- **Locality & Distance:** ${loc.distanceFromTownKm} km from ${loc.nearestTown} (Starting from ${loc.startingJunction})');
+      buffer.writeln('- **Frontage Road Width:** ${loc.accessRoadWidthFt} ft');
+      buffer.writeln('- **Road Surface & Condition:** ${loc.roadSurface} (${loc.roadCondition})');
+      buffer.writeln('- **Vehicle Accessibility:** ${loc.vehicleAccessibility}');
+      buffer.writeln('- **Public Utilities:** ${loc.utilities.join(', ')}');
+      if (loc.accessDirections.isNotEmpty) buffer.writeln('- **Access Directions:** ${loc.accessDirections}');
     } else {
       buffer.writeln('*Situation and access particulars pending execution in Step 6.*');
     }
@@ -171,11 +171,11 @@ class DossierMarkdownService {
         for (int i = 0; i < project.buildingDetails.buildings.length; i++) {
           final b = project.buildingDetails.buildings[i];
           buffer.writeln('### Improvement #${i + 1}: ${b.buildingName}');
-          buffer.writeln('- **Gross Floor Area:** ${b.totalFloorAreaSqFt} sq.ft.');
-          buffer.writeln('- **Estimated Age:** ${b.ageYears} years');
-          buffer.writeln('- **Condition:** ${b.condition}');
-          buffer.writeln('- **Roof:** ${b.roofType} | **Ceiling:** ${b.ceilingType} | **Walls:** ${b.wallType} | **Floors:** ${b.floorType} | **Doors/Windows:** ${b.doorsWindowsType}');
-          buffer.writeln('- **Accommodation Breakdown:** ${b.accommodation}');
+          buffer.writeln('- **Gross Floor Area:** ${b.totalAreaSqFt} sq.ft. (GF: ${b.groundFloorAreaSqFt} sq.ft., UF: ${b.upperFloorAreaSqFt} sq.ft.)');
+          buffer.writeln('- **Estimated Age:** ${b.ageYears} years | **Structural Condition:** ${b.structuralCondition} | **Occupancy:** ${b.occupancy}');
+          buffer.writeln('- **Roof:** ${b.roofType} | **Walls:** ${b.wallType} | **Floors:** ${b.floorType} | **Doors/Windows:** ${b.doorsWindows} | **Baths:** ${b.bathFittings}');
+          final rooms = b.roomCounters.where((r) => r.count > 0).map((r) => '${r.name}: ${r.count}').join(', ');
+          if (rooms.isNotEmpty) buffer.writeln('- **Accommodation:** $rooms');
         }
       }
     } else {
@@ -189,12 +189,13 @@ class DossierMarkdownService {
     buffer.writeln('## 8. Land Physicality & SWOC Risk Matrix (Step 8)');
     if (project != null && project.valuationData.adoptedLandRatePerPerch > 0) {
       final vd = project.valuationData;
-      buffer.writeln('- **Topography:** ${vd.topography}');
+      buffer.writeln('- **Valuation Methodology:** ${vd.methodology}');
       buffer.writeln('- **SWOC Risk Matrix:**');
-      buffer.writeln('  - **Strengths (S):** ${vd.swocStrengths.isNotEmpty ? vd.swocStrengths : "Clear title, prominent frontage, rapid appreciation."}');
-      buffer.writeln('  - **Weaknesses (W):** ${vd.swocWeaknesses.isNotEmpty ? vd.swocWeaknesses : "Narrow bend on approach road."}');
-      buffer.writeln('  - **Opportunities (O):** ${vd.swocOpportunities.isNotEmpty ? vd.swocOpportunities : "Expanding urban commercial hub."}');
-      buffer.writeln('  - **Constraints (C):** ${vd.swocConstraints.isNotEmpty ? vd.swocConstraints : "Statutory local authority street lines."}');
+      buffer.writeln('  - **Strengths (S):** ${vd.strengths}');
+      buffer.writeln('  - **Weaknesses (W):** ${vd.weaknesses}');
+      buffer.writeln('  - **Opportunities (O):** ${vd.opportunities}');
+      buffer.writeln('  - **Constraints (C):** ${vd.constraints}');
+      buffer.writeln('- **Collateral Risk Underwriting Rating:** **${vd.collateralRating}**');
     } else {
       buffer.writeln('*Land characteristics and SWOC analysis pending in Step 8.*');
     }
@@ -206,22 +207,38 @@ class DossierMarkdownService {
     buffer.writeln('## 9. Chartered Valuation Engine & Calculations (Step 9)');
     if (project != null && project.valuationData.adoptedLandRatePerPerch > 0) {
       final vd = project.valuationData;
+      final totalPerches = project.surveyPlanData.selectedTotalPerches > 0
+          ? project.surveyPlanData.selectedTotalPerches
+          : 15.0;
+      final totalBuildingSqFt = project.buildingDetails.totalFloorArea;
+      final hasBuilding = !project.buildingSketch.isBareLand && totalBuildingSqFt > 0;
+
+      final landVal = vd.computeLandValue(totalPerches);
+      final grcVal = vd.computeGrc(totalBuildingSqFt, hasBuilding);
+      final depVal = vd.computeDepreciation(grcVal);
+      final netBuildingVal = vd.computeDepreciatedBuildingValue(grcVal, depVal);
+      final rawTotal = landVal + netBuildingVal;
+      final sayVal = vd.computeMarketValueSay(rawTotal);
+      final fsvVal = vd.computeForcedSaleValue(sayVal);
+
       buffer.writeln('### Land Valuation');
-      buffer.writeln('- **Evaluated Extent:** ${vd.evaluatedPerches.toStringAsFixed(2)} Perches');
+      buffer.writeln('- **Evaluated Extent:** ${totalPerches.toStringAsFixed(2)} Perches');
       buffer.writeln('- **Adopted Market Rate:** LKR ${_currencyFormat.format(vd.adoptedLandRatePerPerch)} / Perch');
-      buffer.writeln('- **Total Land Value:** **LKR ${_currencyFormat.format(vd.totalLandValue)}**');
+      buffer.writeln('- **Total Land Value:** **LKR ${_currencyFormat.format(landVal)}**');
       buffer.writeln();
       buffer.writeln('### Building Valuation (Depreciated Replacement Cost)');
-      buffer.writeln('- **Gross Replacement Cost (GRC):** LKR ${_currencyFormat.format(vd.totalBuildingGrc)}');
-      buffer.writeln('- **Depreciation Allowance (${vd.buildingDepreciationPercentage}%):** LKR ${_currencyFormat.format(vd.totalBuildingGrc * (vd.buildingDepreciationPercentage / 100.0))}');
-      buffer.writeln('- **Depreciated Net Building Value:** **LKR ${_currencyFormat.format(vd.depreciatedBuildingValue)}**');
+      buffer.writeln('- **Gross Floor Area:** ${totalBuildingSqFt.toStringAsFixed(0)} sq.ft.');
+      buffer.writeln('- **Replacement Cost Rate:** LKR ${_currencyFormat.format(vd.buildingReplacementCostPerSqFt)} / sq.ft.');
+      buffer.writeln('- **Gross Replacement Cost (GRC):** LKR ${_currencyFormat.format(grcVal)}');
+      buffer.writeln('- **Depreciation Allowance (${vd.depreciationPercentage}%):** LKR ${_currencyFormat.format(depVal)}');
+      buffer.writeln('- **Depreciated Net Building Value:** **LKR ${_currencyFormat.format(netBuildingVal)}**');
       buffer.writeln();
       buffer.writeln('### Executive Valuation Summary');
-      buffer.writeln('- **Total Unrounded Market Value:** LKR ${_currencyFormat.format(vd.unroundedMarketValue)}');
-      buffer.writeln('- **CERTIFIED MARKET VALUE (SAY):** **LKR ${_currencyFormat.format(vd.certifiedMarketValueSay)}**');
-      buffer.writeln('- **Forced Sale Value Discount:** ${vd.forcedSaleValuePercentage}%');
-      buffer.writeln('- **FORCED SALE VALUE (FSV):** **LKR ${_currencyFormat.format(vd.forcedSaleValue)}**');
-      buffer.writeln('- **Collateral Risk Underwriting Rating:** **${vd.collateralRiskRating}**');
+      buffer.writeln('- **Total Unrounded Market Value:** LKR ${_currencyFormat.format(rawTotal)}');
+      buffer.writeln('- **CERTIFIED MARKET VALUE (SAY):** **LKR ${_currencyFormat.format(sayVal)}**');
+      buffer.writeln('- **Forced Sale Value Discount:** ${vd.fsvPercentage}%');
+      buffer.writeln('- **FORCED SALE VALUE (FSV):** **LKR ${_currencyFormat.format(fsvVal)}**');
+      buffer.writeln('- **Collateral Risk Underwriting Rating:** **${vd.collateralRating}**');
     } else {
       buffer.writeln('*Valuation computations pending execution in Step 9.*');
     }
