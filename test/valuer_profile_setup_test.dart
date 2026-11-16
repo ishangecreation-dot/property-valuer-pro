@@ -127,6 +127,26 @@ void main() {
       expect(summary, contains('Executive Summary'));
       expect(summary, contains('Land Valuation Table'));
     });
+
+    test('5b. AiService.analyzeMultipleReportsStyle generates unified style blueprint for multiple reports', () async {
+      final summary = await AiService.analyzeMultipleReportsStyle([
+        'Draft_Valuation_Report_1.docx',
+        'Draft_Valuation_Report_2.docx',
+        'Draft_Valuation_Report_3.pdf',
+      ]);
+      expect(summary, contains('AI Report Style Blueprint'));
+      expect(summary, contains('Executive Summary'));
+    });
+
+    test('5c. StorageService tracks and recovers active route across Android lifecycle', () async {
+      await StorageService.setCurrentRoute('/step2');
+      final route = await StorageService.getCurrentRoute();
+      expect(route, '/step2');
+
+      await StorageService.clearCurrentRoute();
+      final cleared = await StorageService.getCurrentRoute();
+      expect(cleared, isNull);
+    });
   });
 
   group('Valuer Profile Setup – UI & Screen 2 Tests', () {

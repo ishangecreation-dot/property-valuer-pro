@@ -20,6 +20,7 @@
         android:name="${applicationName}"
         android:icon="@drawable/ic_launcher"
         android:allowBackup="false"
+        android:largeHeap="true"
         android:requestLegacyExternalStorage="true"
         android:usesCleartextTraffic="false">
         <activity

@@ -37,6 +37,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
   @override
   void initState() {
     super.initState();
+    // Persist active workflow route to survive Android background activity destruction
+    StorageService.setCurrentRoute('/step2');
     _loadProfileAndDrafts();
   }
 
@@ -155,6 +157,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
     final success = await _saveProfile(showSuccessFeedback: false);
     if (!success || !mounted) return;
 
+    await StorageService.setCurrentRoute('/step3');
+
     ScaffoldMessenger.of(context).showSnackBar(
       const SnackBar(
         content: Text('Profile draft saved. Continuing to Deed Extraction.'),
@@ -184,17 +188,27 @@ class _ProfileScreenState extends State<ProfileScreen> {
   /// Multi-document / PDF selection and AI Report Style Analysis
   void _uploadTemplate() async {
     final isPaid = await EntitlementService.isPaidTier();
-    if (!isPaid && _profile.uploadedTemplates.length >= AppConstants.freeTierTemplateLimit) {
+    final maxAllowed = isPaid ? 99 : AppConstants.freeTierTemplateLimit;
+    final currentCount = _profile.uploadedTemplates.length;
+
+    if (!isPaid && currentCount >= maxAllowed) {
       if (!mounted) return;
       showDialog(
         context: context,
         builder: (context) => AlertDialog(
-          title: const Text('Template Limit Reached'),
+          title: const Text('Template Limit Reached (3 Reports)'),
           content: const Text(
-            'The Free Version supports up to 3 custom Word (.docx) or PDF report templates.\n\nUpgrade to the Paid Version to add unlimited report templates.',
+            'The Free Version supports up to 3 custom Word (.docx) or PDF draft reports.\n\nYou can clear existing reports to upload new ones, or upgrade to Paid Version for unlimited templates.',
           ),
           actions: [
             TextButton(
+              onPressed: () {
+                Navigator.pop(context);
+                _clearAllTemplates();
+              },
+              child: const Text('Clear All Reports', style: TextStyle(color: AppColors.error)),
+            ),
+            ElevatedButton(
               onPressed: () => Navigator.pop(context),
               child: const Text('OK'),
             ),
@@ -204,84 +218,111 @@ class _ProfileScreenState extends State<ProfileScreen> {
       return;
     }
 
+    // Ensure route is set to /step2 so any OS activity recreation returns here
+    await StorageService.setCurrentRoute('/step2');
+
+    FilePickerResult? result;
     try {
-      FilePickerResult? result = await FilePicker.platform.pickFiles(
+      // Primary: Custom document extensions with multi-select
+      result = await FilePicker.platform.pickFiles(
         type: FileType.custom,
         allowedExtensions: ['docx', 'doc', 'pdf'],
         allowMultiple: true,
       );
-
-      if (result != null && result.files.isNotEmpty) {
-        setState(() {
-          _isAnalyzingStyle = true;
-        });
-
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Row(
-              children: [
-                SizedBox(
-                  width: 18,
-                  height: 18,
-                  child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
-                ),
-                SizedBox(width: 12),
-                Expanded(child: Text('AI analyzing report formatting & style conventions...')),
-              ],
-            ),
-            duration: Duration(seconds: 4),
-          ),
+    } catch (_) {
+      try {
+        // Fallback for Android OEM pickers (Samsung, Xiaomi, Vivo) where custom multi-select fails
+        result = await FilePicker.platform.pickFiles(
+          type: FileType.any,
+          allowMultiple: true,
         );
-
-        String combinedStyleBlueprint = _profile.reportStyleSummary;
-
-        for (final file in result.files) {
-          final fileName = file.name;
-          if (!_profile.uploadedTemplates.contains(fileName)) {
-            _profile.uploadedTemplates.add(fileName);
-          }
-
-          // Call Gemini AI service to analyze draft report style
-          try {
-            final styleSummary = await AiService.analyzeReportStyle(
-              fileName: fileName,
-              fileBytes: file.bytes,
-            );
-            _profile.templateStyleNotes[fileName] = styleSummary;
-            combinedStyleBlueprint = styleSummary;
-          } catch (_) {
-            // Keep fallback
-          }
-        }
-
-        _profile.reportStyleSummary = combinedStyleBlueprint;
-        await StorageService.saveProfile(_profile);
-
+      } catch (e) {
+        result = null;
         if (mounted) {
-          setState(() {
-            _isAnalyzingStyle = false;
-          });
           ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('Draft reports analyzed. AI style conventions captured.'),
-              backgroundColor: AppColors.primaryActionTeal,
+            SnackBar(
+              content: Text('Could not open file manager: $e'),
+              backgroundColor: AppColors.error,
             ),
           );
         }
       }
-    } catch (_) {
-      // Fallback on restricted permission environments
-      final fallbackName = 'Standard_Chartered_Template_${_profile.uploadedTemplates.length + 1}.docx';
+    }
+
+    // If user canceled or closed the picker, do not modify existing templates
+    if (result == null || result.files.isEmpty) {
+      return;
+    }
+
+    // Filter to valid document formats
+    final validExtensions = ['docx', 'doc', 'pdf'];
+    final pickedValid = result.files.where((f) {
+      final ext = (f.extension ?? f.name.split('.').last).toLowerCase();
+      return validExtensions.contains(ext);
+    }).toList();
+
+    if (pickedValid.isEmpty) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Please select valid Word (.docx, .doc) or PDF documents.'),
+            backgroundColor: AppColors.warning,
+          ),
+        );
+      }
+      return;
+    }
+
+    // Add unique reports up to allowed limit
+    final newlyAdded = <String>[];
+    for (final file in pickedValid) {
+      if (_profile.uploadedTemplates.length >= maxAllowed) {
+        break;
+      }
+      final fileName = file.name;
+      if (!_profile.uploadedTemplates.contains(fileName)) {
+        _profile.uploadedTemplates.add(fileName);
+        newlyAdded.add(fileName);
+      }
+    }
+
+    if (newlyAdded.isEmpty) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Selected document(s) are already uploaded or limit reached.'),
+            backgroundColor: AppColors.primaryNavy,
+          ),
+        );
+      }
+      return;
+    }
+
+    // Update screen state immediately so files appear right away
+    setState(() {
+      _isAnalyzingStyle = true;
+    });
+    await StorageService.saveProfile(_profile);
+
+    // Analyze AI style conventions across all uploaded reports in a single unified batch call
+    try {
+      final styleBlueprint = await AiService.analyzeMultipleReportsStyle(_profile.uploadedTemplates);
+      if (styleBlueprint.isNotEmpty) {
+        _profile.reportStyleSummary = styleBlueprint;
+        await StorageService.saveProfile(_profile);
+      }
+    } catch (_) {}
+
+    if (mounted) {
       setState(() {
-        _profile.uploadedTemplates.add(fallbackName);
-        _profile.reportStyleSummary =
-            '### AI Report Style Blueprint (Learned from $fallbackName)\n'
-            '• Executive Summary table structure with valuation metrics.\n'
-            '• Land rate itemization in LKR per perch.\n'
-            '• Building Gross Replacement Cost (GRC) & age depreciation rate.\n'
-            '• Impartiality certificate & chartered valuer seal.';
+        _isAnalyzingStyle = false;
       });
-      await StorageService.saveProfile(_profile);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Uploaded ${newlyAdded.length} draft report(s). AI style blueprint generated.'),
+          backgroundColor: AppColors.primaryActionTeal,
+        ),
+      );
     }
   }
 
@@ -295,6 +336,22 @@ class _ProfileScreenState extends State<ProfileScreen> {
       }
     });
     await StorageService.saveProfile(_profile);
+  }
+
+  void _clearAllTemplates() async {
+    setState(() {
+      _profile.uploadedTemplates.clear();
+      _profile.templateStyleNotes.clear();
+      _profile.reportStyleSummary = '';
+    });
+    await StorageService.saveProfile(_profile);
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text('All draft reports cleared. You can now upload up to 3 fresh reports.'),
+        backgroundColor: AppColors.primaryNavy,
+      ),
+    );
   }
 
   /// Switch active profile to a saved draft
@@ -446,7 +503,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
     return ResponsiveWorkflowScaffold(
       currentStep: 2,
       title: 'Valuer Profile Setup',
-      onBack: () => Navigator.pop(context),
+      onBack: () async {
+        await StorageService.clearCurrentRoute();
+        if (mounted) Navigator.pop(context);
+      },
       onNext: _handleSaveAndNextToDeed,
       nextLabel: 'Save & Next to Deed',
       body: _isLoading
@@ -754,14 +814,33 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   // C. Custom Report Templates & AI Style Extraction (DOCX/PDF)
                   SectionCard(
                     title: 'Multi-Document / PDF Draft Reports',
-                    subtitle: 'Upload draft reports. Gemini AI extracts formatting and table style for your final valuation report.',
-                    trailing: Text(
-                      '${_profile.uploadedTemplates.length}/${AppConstants.freeTierTemplateLimit} Free Slots',
-                      style: const TextStyle(
-                        fontSize: 12,
-                        fontWeight: FontWeight.w700,
-                        color: AppColors.primaryActionTeal,
-                      ),
+                    subtitle: 'Upload up to 3 draft reports. Gemini AI analyzes report structure and styles to inform final report generation.',
+                    trailing: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Text(
+                          '${_profile.uploadedTemplates.length}/${AppConstants.freeTierTemplateLimit} Slots',
+                          style: const TextStyle(
+                            fontSize: 12,
+                            fontWeight: FontWeight.w700,
+                            color: AppColors.primaryActionTeal,
+                          ),
+                        ),
+                        if (_profile.uploadedTemplates.isNotEmpty) ...[
+                          const SizedBox(width: 10),
+                          GestureDetector(
+                            onTap: _clearAllTemplates,
+                            child: const Text(
+                              'Clear All',
+                              style: TextStyle(
+                                fontSize: 12,
+                                fontWeight: FontWeight.bold,
+                                color: AppColors.error,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ],
                     ),
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
@@ -785,7 +864,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                                 SizedBox(width: 12),
                                 Expanded(
                                   child: Text(
-                                    'Gemini AI analyzing report style conventions...',
+                                    'Gemini AI analyzing report style conventions across uploaded documents...',
                                     style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w600, color: AppColors.professionalBlue),
                                   ),
                                 ),
@@ -806,7 +885,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                                 SizedBox(width: 10),
                                 Expanded(
                                   child: Text(
-                                    'Upload one or multiple .docx or .pdf draft reports. The AI will learn your table styles, perch rate formats, and phrasing conventions to tailor future reports.',
+                                    'Upload 1 to 3 sample Word (.docx) or PDF draft reports. Gemini AI extracts your preferred section structure, perch rates, and certificate phrasing.',
                                     style: TextStyle(fontSize: 12, color: AppColors.secondaryText),
                                   ),
                                 ),
@@ -847,15 +926,16 @@ class _ProfileScreenState extends State<ProfileScreen> {
                                             maxLines: 1,
                                             overflow: TextOverflow.ellipsis,
                                           ),
-                                          const Text(
-                                            'Style analyzed by Gemini AI',
-                                            style: TextStyle(fontSize: 11, color: AppColors.primaryActionTeal),
+                                          Text(
+                                            'Draft Report #${index + 1} • Style conventions analyzed',
+                                            style: const TextStyle(fontSize: 11, color: AppColors.primaryActionTeal),
                                           ),
                                         ],
                                       ),
                                     ),
                                     IconButton(
                                       icon: const Icon(Icons.delete_outline, size: 18, color: AppColors.error),
+                                      tooltip: 'Remove Report',
                                       onPressed: () => _removeTemplate(index),
                                     ),
                                   ],
@@ -865,11 +945,37 @@ class _ProfileScreenState extends State<ProfileScreen> {
                           ),
 
                         const SizedBox(height: 12),
-                        OutlinedButton.icon(
-                          onPressed: _uploadTemplate,
-                          icon: const Icon(Icons.upload_file, size: 18),
-                          label: const Text('+ Upload Draft Reports (Multi-Select DOCX/PDF)'),
-                        ),
+                        // Upload / Add report button
+                        if (_profile.uploadedTemplates.length < AppConstants.freeTierTemplateLimit)
+                          OutlinedButton.icon(
+                            key: const Key('upload_template_button'),
+                            onPressed: _uploadTemplate,
+                            icon: const Icon(Icons.upload_file, size: 18),
+                            label: Text(_profile.uploadedTemplates.isEmpty
+                                ? '+ Upload Draft Reports (Select up to 3 DOCX/PDF)'
+                                : '+ Add Another Report (${_profile.uploadedTemplates.length}/3)'),
+                          )
+                        else
+                          Container(
+                            padding: const EdgeInsets.all(10),
+                            decoration: BoxDecoration(
+                              color: AppColors.primaryActionTeal.withOpacity(0.08),
+                              borderRadius: BorderRadius.circular(8),
+                              border: Border.all(color: AppColors.primaryActionTeal.withOpacity(0.3)),
+                            ),
+                            child: Row(
+                              children: [
+                                const Icon(Icons.check_circle, color: AppColors.primaryActionTeal, size: 18),
+                                const SizedBox(width: 8),
+                                const Expanded(
+                                  child: Text(
+                                    'All 3 draft report slots filled. Tap "Clear All" above to upload different reports.',
+                                    style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: AppColors.primaryNavy),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
 
                         // AI Report Style Blueprint Display Card
                         if (_profile.reportStyleSummary.isNotEmpty) ...[
@@ -884,17 +990,23 @@ class _ProfileScreenState extends State<ProfileScreen> {
                             child: Column(
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
-                                const Row(
+                                Row(
                                   children: [
-                                    Icon(Icons.auto_awesome, color: AppColors.primaryActionTeal, size: 18),
-                                    SizedBox(width: 8),
-                                    Text(
-                                      'AI Learned Report Style Blueprint',
-                                      style: TextStyle(
-                                        fontSize: 13,
-                                        fontWeight: FontWeight.bold,
-                                        color: AppColors.primaryNavy,
+                                    const Icon(Icons.auto_awesome, color: AppColors.primaryActionTeal, size: 18),
+                                    const SizedBox(width: 8),
+                                    const Expanded(
+                                      child: Text(
+                                        'AI Learned Report Style Blueprint',
+                                        style: TextStyle(
+                                          fontSize: 13,
+                                          fontWeight: FontWeight.bold,
+                                          color: AppColors.primaryNavy,
+                                        ),
                                       ),
+                                    ),
+                                    Text(
+                                      '${_profile.uploadedTemplates.length} Source Reports',
+                                      style: const TextStyle(fontSize: 11, color: AppColors.secondaryText),
                                     ),
                                   ],
                                 ),

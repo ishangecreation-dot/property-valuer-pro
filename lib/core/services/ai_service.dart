@@ -642,4 +642,62 @@ Examine this cadastral survey plan and extract all plan particulars and surveyed
         '• **Building Valuation:** Gross Replacement Cost (GRC) itemization, physical age depreciation percentage, and Net Building Value.\n'
         '• **Statutory Declarations:** Formal declaration of impartiality, physical site inspection certification, and Chartered Valuer seal block.';
   }
+
+  /// Analyzes multiple uploaded draft valuation reports (DOCX/PDF) in a single batch request.
+  static Future<String> analyzeMultipleReportsStyle(List<String> fileNames) async {
+    if (analyzeReportStyleOverride != null) {
+      return analyzeReportStyleOverride!;
+    }
+    if (fileNames.isEmpty) {
+      return '';
+    }
+    if (fileNames.length == 1) {
+      return analyzeReportStyle(fileName: fileNames.first);
+    }
+
+    final apiKey = await EncryptionService.getAiApiKey();
+    if (apiKey.trim().isEmpty) {
+      return _defaultCharteredStyleSummary(fileNames.join(', '));
+    }
+
+    try {
+      final url = '${await _endpoint()}?key=$apiKey';
+      final namesList = fileNames.map((n) => '• $n').join('\n');
+      final promptText =
+          'You are an expert real estate valuation reviewer. Analyze the following uploaded draft valuation reports/templates:\n'
+          '$namesList\n\n'
+          'Extract unified formatting conventions, table presentation styles, and phrasing guidelines so that future generated valuation reports '
+          'consistently reflect this valuer\'s signature style.\n\n'
+          'Extract and summarize into these 4 concise sections in clean markdown:\n'
+          '1. Executive Summary & Key Metrics Table Layout\n'
+          '2. Land & Building Valuation Presentation (Perch rates, depreciation, GRC)\n'
+          '3. Tone & Phrasing Conventions\n'
+          '4. Statutory Declaration & Signature Block Format\n'
+          'Return a professional unified style blueprint.';
+
+      final response = await http.post(
+        Uri.parse(url),
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode({
+          'contents': [
+            {
+              'parts': [
+                {'text': promptText}
+              ]
+            }
+          ]
+        }),
+      ).timeout(const Duration(seconds: 20));
+
+      if (response.statusCode == 200) {
+        final Map<String, dynamic> json = jsonDecode(response.body);
+        final result = json['candidates']?[0]?['content']?['parts']?[0]?['text'];
+        if (result != null && result.toString().trim().isNotEmpty) {
+          return result.toString().trim();
+        }
+      }
+    } catch (_) {}
+
+    return _defaultCharteredStyleSummary(fileNames.join(', '));
+  }
 }

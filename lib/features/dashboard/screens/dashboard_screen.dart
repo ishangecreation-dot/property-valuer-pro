@@ -37,6 +37,18 @@ class _DashboardScreenState extends State<DashboardScreen> {
         _usageState = usage;
         _isLoading = false;
       });
+
+      // Restore active workflow screen if Android killed the activity during file picking
+      final savedRoute = await StorageService.getCurrentRoute();
+      if (savedRoute != null && savedRoute.isNotEmpty && savedRoute != '/' && savedRoute != '/step1') {
+        if (mounted) {
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            if (mounted) {
+              Navigator.pushNamed(context, savedRoute);
+            }
+          });
+        }
+      }
     }
   }
 

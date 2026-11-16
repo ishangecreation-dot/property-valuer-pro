@@ -10,6 +10,23 @@ class StorageService {
   static const String _keyProfileDrafts = 'val_profile_drafts_list';
   static const String _keyProjects = 'val_projects_list';
   static const String _keyActiveProjectId = 'val_active_project_id';
+  static const String _keyCurrentRoute = 'val_current_active_route';
+
+  // Active Screen / Route Persistence across Android Activity recreation
+  static Future<void> setCurrentRoute(String route) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(_keyCurrentRoute, route);
+  }
+
+  static Future<String?> getCurrentRoute() async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getString(_keyCurrentRoute);
+  }
+
+  static Future<void> clearCurrentRoute() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.remove(_keyCurrentRoute);
+  }
 
   // Monthly Report Quota Keys
   static const String _keyUsageMonth = 'val_monthly_usage_month';
