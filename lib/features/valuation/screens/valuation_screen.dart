@@ -43,6 +43,15 @@ class _ValuationScreenState extends State<ValuationScreen> {
     _loadProject();
   }
 
+  @override
+  void dispose() {
+    _landRateCtrl.dispose();
+    _bldgCostCtrl.dispose();
+    _depPctCtrl.dispose();
+    _fsvPctCtrl.dispose();
+    super.dispose();
+  }
+
   Future<void> _loadProject() async {
     final proj = await StorageService.loadActiveProject();
     if (proj != null) {
@@ -142,6 +151,7 @@ class _ValuationScreenState extends State<ValuationScreen> {
                                 keyboardType: TextInputType.number,
                                 onChanged: (v) {
                                   _valData.adoptedLandRatePerPerch = double.tryParse(v) ?? 350000.0;
+                                  if (_project != null) _project!.valuationData = _valData;
                                   setState(() {});
                                 },
                               ),
@@ -155,6 +165,7 @@ class _ValuationScreenState extends State<ValuationScreen> {
                                 keyboardType: TextInputType.number,
                                 onChanged: (v) {
                                   _valData.buildingReplacementCostPerSqFt = double.tryParse(v) ?? 7000.0;
+                                  if (_project != null) _project!.valuationData = _valData;
                                   setState(() {});
                                 },
                               ),
@@ -171,6 +182,7 @@ class _ValuationScreenState extends State<ValuationScreen> {
                                 keyboardType: TextInputType.number,
                                 onChanged: (v) {
                                   _valData.depreciationPercentage = double.tryParse(v) ?? 10.0;
+                                  if (_project != null) _project!.valuationData = _valData;
                                   setState(() {});
                                 },
                               ),
@@ -184,6 +196,7 @@ class _ValuationScreenState extends State<ValuationScreen> {
                                 keyboardType: TextInputType.number,
                                 onChanged: (v) {
                                   _valData.fsvPercentage = double.tryParse(v) ?? 75.0;
+                                  if (_project != null) _project!.valuationData = _valData;
                                   setState(() {});
                                 },
                               ),

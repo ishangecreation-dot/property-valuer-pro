@@ -6,6 +6,7 @@ import '../../../models/valuation_project.dart';
 import '../../../models/deed_data.dart';
 import '../../../core/storage/storage_service.dart';
 import '../../../core/services/ai_service.dart';
+import '../../../core/utilities/memory_manager.dart';
 import '../../../widgets/responsive_scaffold.dart';
 import '../../../widgets/custom_form_fields.dart';
 
@@ -43,6 +44,27 @@ class _DeedExtractionScreenState extends State<DeedExtractionScreen> {
   void initState() {
     super.initState();
     _loadProject();
+  }
+
+  @override
+  void dispose() {
+    _deedNoCtrl.dispose();
+    _execDateCtrl.dispose();
+    _notaryNameCtrl.dispose();
+    _notaryStationCtrl.dispose();
+    _landRegistryCtrl.dispose();
+    _regDateCtrl.dispose();
+    _dayBookCtrl.dispose();
+    _folioCtrl.dispose();
+    _vendeeNameCtrl.dispose();
+    _vendeeNicCtrl.dispose();
+    _vendeeAddressCtrl.dispose();
+    _vendorNameCtrl.dispose();
+    _vendorNicCtrl.dispose();
+    _vendorAddressCtrl.dispose();
+    _considerationCtrl.dispose();
+    MemoryManager.optimizeMemory();
+    super.dispose();
   }
 
   Future<void> _loadProject() async {
@@ -102,10 +124,17 @@ class _DeedExtractionScreenState extends State<DeedExtractionScreen> {
     try {
       final res = await FilePicker.platform.pickFiles(type: FileType.custom, allowedExtensions: ['pdf']);
       if (res != null && res.files.single.path != null) {
-        setState(() => _deed.documentFilePaths.add(res.files.single.path!));
+        final path = res.files.single.path!;
+        if (!_deed.documentFilePaths.contains(path)) {
+          setState(() => _deed.documentFilePaths.add(path));
+        }
       }
-    } catch (_) {
-      setState(() => _deed.documentFilePaths.add('Title_Deed_Scan_Doc.pdf'));
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Could not attach PDF: $e'), backgroundColor: AppColors.error),
+        );
+      }
     }
   }
 
@@ -119,33 +148,72 @@ class _DeedExtractionScreenState extends State<DeedExtractionScreen> {
         imageQuality: 85, // Automatic memory compression
       );
       if (picked != null) {
-        setState(() => _deed.documentFilePaths.add(picked.path));
+        if (!_deed.documentFilePaths.contains(picked.path)) {
+          setState(() => _deed.documentFilePaths.add(picked.path));
+        }
       }
-    } catch (_) {
-      setState(() => _deed.documentFilePaths.add('Deed_Page_${_deed.documentFilePaths.length + 1}.jpg'));
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Could not capture/select image: $e'), backgroundColor: AppColors.error),
+        );
+      }
     }
   }
 
   void _triggerAiExtraction() async {
+    if (_deed.documentFilePaths.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Please attach or capture a title deed document first.'),
+          backgroundColor: AppColors.warning,
+        ),
+      );
+      return;
+    }
+
     setState(() {
       _isExtracting = true;
       _extractionStatus = 'Starting AI document extraction...';
     });
 
-    final extracted = await AiService.extractDeed(
-      filePaths: _deed.documentFilePaths,
-      onProgress: (status) => setState(() => _extractionStatus = status),
-    );
+    try {
+      final extracted = await AiService.extractDeed(
+        filePaths: _deed.documentFilePaths,
+        onProgress: (status) {
+          if (mounted) setState(() => _extractionStatus = status);
+        },
+      );
 
-    setState(() {
-      _deed = extracted;
-      _updateControllers();
-      _isExtracting = false;
-    });
+      if (mounted) {
+        setState(() {
+          _deed = extracted;
+          _updateControllers();
+        });
+        _syncControllersToData();
 
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('AI Deed Details Extracted. Please review and verify.')),
-    );
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('AI Deed Details Extracted. Please review and verify.'),
+            backgroundColor: AppColors.primaryActionTeal,
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Deed extraction failed: $e'),
+            backgroundColor: AppColors.error,
+            duration: const Duration(seconds: 4),
+          ),
+        );
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _isExtracting = false);
+      }
+    }
   }
 
   @override

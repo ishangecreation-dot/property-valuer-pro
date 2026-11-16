@@ -6,6 +6,7 @@ import '../../../models/valuation_project.dart';
 import '../../../models/survey_plan_data.dart';
 import '../../../core/storage/storage_service.dart';
 import '../../../core/services/ai_service.dart';
+import '../../../core/utilities/memory_manager.dart';
 import '../../../widgets/responsive_scaffold.dart';
 import '../../../widgets/custom_form_fields.dart';
 
@@ -35,6 +36,19 @@ class _PlanExtractionScreenState extends State<PlanExtractionScreen> {
   void initState() {
     super.initState();
     _loadProject();
+  }
+
+  @override
+  void dispose() {
+    _planNoCtrl.dispose();
+    _surveyDateCtrl.dispose();
+    _certDateCtrl.dispose();
+    _surveyorNameCtrl.dispose();
+    _surveyorRegCtrl.dispose();
+    _landNameCtrl.dispose();
+    _priorPlanCtrl.dispose();
+    MemoryManager.optimizeMemory();
+    super.dispose();
   }
 
   Future<void> _loadProject() async {
@@ -76,10 +90,17 @@ class _PlanExtractionScreenState extends State<PlanExtractionScreen> {
     try {
       final res = await FilePicker.platform.pickFiles(type: FileType.custom, allowedExtensions: ['pdf']);
       if (res != null && res.files.single.path != null) {
-        setState(() => _plan.documentFilePaths.add(res.files.single.path!));
+        final path = res.files.single.path!;
+        if (!_plan.documentFilePaths.contains(path)) {
+          setState(() => _plan.documentFilePaths.add(path));
+        }
       }
-    } catch (_) {
-      setState(() => _plan.documentFilePaths.add('Cadastral_Plan_Scan.pdf'));
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Could not attach PDF: $e'), backgroundColor: AppColors.error),
+        );
+      }
     }
   }
 
@@ -93,33 +114,72 @@ class _PlanExtractionScreenState extends State<PlanExtractionScreen> {
         imageQuality: 85,
       );
       if (picked != null) {
-        setState(() => _plan.documentFilePaths.add(picked.path));
+        if (!_plan.documentFilePaths.contains(picked.path)) {
+          setState(() => _plan.documentFilePaths.add(picked.path));
+        }
       }
-    } catch (_) {
-      setState(() => _plan.documentFilePaths.add('Plan_Sheet_${_plan.documentFilePaths.length + 1}.jpg'));
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Could not capture/select image: $e'), backgroundColor: AppColors.error),
+        );
+      }
     }
   }
 
   void _triggerAiExtraction() async {
+    if (_plan.documentFilePaths.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Please attach or capture a survey plan document first.'),
+          backgroundColor: AppColors.warning,
+        ),
+      );
+      return;
+    }
+
     setState(() {
       _isExtracting = true;
       _extractionStatus = 'Analyzing survey plan & extracting lots...';
     });
 
-    final extracted = await AiService.extractSurveyPlan(
-      filePaths: _plan.documentFilePaths,
-      onProgress: (status) => setState(() => _extractionStatus = status),
-    );
+    try {
+      final extracted = await AiService.extractSurveyPlan(
+        filePaths: _plan.documentFilePaths,
+        onProgress: (status) {
+          if (mounted) setState(() => _extractionStatus = status);
+        },
+      );
 
-    setState(() {
-      _plan = extracted;
-      _updateControllers();
-      _isExtracting = false;
-    });
+      if (mounted) {
+        setState(() {
+          _plan = extracted;
+          _updateControllers();
+        });
+        _syncControllersToData();
 
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Survey Plan & Lots extracted successfully.')),
-    );
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Survey Plan & Lots extracted successfully.'),
+            backgroundColor: AppColors.primaryActionTeal,
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Survey plan extraction failed: $e'),
+            backgroundColor: AppColors.error,
+            duration: const Duration(seconds: 4),
+          ),
+        );
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _isExtracting = false);
+      }
+    }
   }
 
   void _addNewLot() {

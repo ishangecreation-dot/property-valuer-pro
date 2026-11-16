@@ -138,7 +138,12 @@ class _GenerationSuccessScreenState extends State<GenerationSuccessScreen> {
                         ),
                         const SizedBox(width: 16),
                         TextButton.icon(
-                          onPressed: () => Navigator.pushNamedAndRemoveUntil(context, '/', (route) => false),
+                          onPressed: () async {
+                            await StorageService.clearCurrentRoute();
+                            if (context.mounted) {
+                              Navigator.pushNamedAndRemoveUntil(context, '/', (route) => false);
+                            }
+                          },
                           icon: const Icon(Icons.dashboard, size: 16),
                           label: const Text('Return to Dashboard'),
                         ),

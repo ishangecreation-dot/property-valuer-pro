@@ -47,6 +47,18 @@ class _LocationScreenState extends State<LocationScreen> {
     _loadProject();
   }
 
+  @override
+  void dispose() {
+    _latCtrl.dispose();
+    _lngCtrl.dispose();
+    _townCtrl.dispose();
+    _junctionCtrl.dispose();
+    _directionsCtrl.dispose();
+    _distanceCtrl.dispose();
+    _roadWidthCtrl.dispose();
+    super.dispose();
+  }
+
   Future<void> _loadProject() async {
     final proj = await StorageService.loadActiveProject();
     if (proj != null) {

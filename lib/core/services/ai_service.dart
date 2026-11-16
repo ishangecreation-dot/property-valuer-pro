@@ -328,10 +328,16 @@ class AiService {
     onProgress?.call('Compressing document pages for extraction...');
     final parts = <Map<String, dynamic>>[];
 
-    // Read and attach up to 3 document images/pages
+    // Read and attach up to 3 document images/pages with heap-safe size verification
     for (final path in filePaths.take(3)) {
       final file = File(path);
       if (await file.exists()) {
+        final fileSize = await file.length();
+        if (fileSize > 12 * 1024 * 1024) {
+          throw Exception(
+            'Document file exceeds safe memory limit of 12MB (${(fileSize / (1024 * 1024)).toStringAsFixed(1)}MB). Please attach a compressed copy to prevent app memory exhaustion.',
+          );
+        }
         final bytes = await file.readAsBytes();
         final ext = path.toLowerCase();
         String mimeType = 'image/jpeg';
@@ -468,6 +474,12 @@ If any field is unreadable, blurred, or missing, leave it as an empty string and
     for (final path in filePaths.take(2)) {
       final file = File(path);
       if (await file.exists()) {
+        final fileSize = await file.length();
+        if (fileSize > 12 * 1024 * 1024) {
+          throw Exception(
+            'Survey plan file exceeds safe memory limit of 12MB (${(fileSize / (1024 * 1024)).toStringAsFixed(1)}MB). Please attach a compressed copy to prevent app memory exhaustion.',
+          );
+        }
         final bytes = await file.readAsBytes();
         final ext = path.toLowerCase();
         String mimeType = 'image/jpeg';

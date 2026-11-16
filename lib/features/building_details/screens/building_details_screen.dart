@@ -4,6 +4,7 @@ import '../../../core/constants/app_colors.dart';
 import '../../../models/valuation_project.dart';
 import '../../../models/building_details.dart';
 import '../../../core/storage/storage_service.dart';
+import '../../../core/utilities/memory_manager.dart';
 import '../../../widgets/responsive_scaffold.dart';
 import '../../../widgets/custom_form_fields.dart';
 
@@ -33,6 +34,15 @@ class _BuildingDetailsScreenState extends State<BuildingDetailsScreen> {
   void initState() {
     super.initState();
     _loadProject();
+  }
+
+  @override
+  void dispose() {
+    _gfAreaCtrl.dispose();
+    _ufAreaCtrl.dispose();
+    _ageCtrl.dispose();
+    MemoryManager.optimizeMemory();
+    super.dispose();
   }
 
   Future<void> _loadProject() async {
@@ -78,10 +88,15 @@ class _BuildingDetailsScreenState extends State<BuildingDetailsScreen> {
           _details.photographs[slotIdx].filePath = picked.path;
         });
       }
-    } catch (_) {
-      setState(() {
-        _details.photographs[slotIdx].filePath = 'photo_slot_${slotIdx + 1}.jpg';
-      });
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Could not capture/select photo: $e'),
+            backgroundColor: AppColors.error,
+          ),
+        );
+      }
     }
   }
 

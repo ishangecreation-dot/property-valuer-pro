@@ -3,6 +3,7 @@ import '../../../core/constants/app_colors.dart';
 import '../../../models/valuation_project.dart';
 import '../../../models/building_sketch.dart';
 import '../../../core/storage/storage_service.dart';
+import '../../../core/utilities/memory_manager.dart';
 import '../../../widgets/responsive_scaffold.dart';
 
 class A3SketchingScreen extends StatefulWidget {
@@ -30,6 +31,13 @@ class _A3SketchingScreenState extends State<A3SketchingScreen> {
     _loadProject();
   }
 
+  @override
+  void dispose() {
+    _transController.dispose();
+    MemoryManager.optimizeMemory();
+    super.dispose();
+  }
+
   Future<void> _loadProject() async {
     final proj = await StorageService.loadActiveProject();
     if (proj != null) {
@@ -50,8 +58,8 @@ class _A3SketchingScreenState extends State<A3SketchingScreen> {
 
   void _onPanStart(DragStartDetails details) {
     if (_sketch.isBareLand) return;
-    final RenderBox box = context.findRenderObject() as RenderBox;
-    final local = box.globalToLocal(details.globalPosition);
+    // Calibrated directly to gesture canvas local coordinates
+    final local = details.localPosition;
 
     setState(() {
       _currentPoints = [SketchPoint(local.dx, local.dy)];
@@ -60,11 +68,19 @@ class _A3SketchingScreenState extends State<A3SketchingScreen> {
 
   void _onPanUpdate(DragUpdateDetails details) {
     if (_sketch.isBareLand) return;
-    final RenderBox box = context.findRenderObject() as RenderBox;
-    final local = box.globalToLocal(details.globalPosition);
+    final local = details.localPosition;
 
     setState(() {
       if (_activeTool == SketchTool.freehand) {
+        // Enforce Euclidean distance threshold (minimum 3px) to decimate redundant points and bound heap memory
+        if (_currentPoints.isNotEmpty) {
+          final last = _currentPoints.last;
+          final dx = local.dx - last.x;
+          final dy = local.dy - last.y;
+          if (dx * dx + dy * dy < 9.0) {
+            return;
+          }
+        }
         _currentPoints.add(SketchPoint(local.dx, local.dy));
       } else {
         if (_currentPoints.length > 1) {
@@ -281,17 +297,19 @@ class _A3SketchingScreenState extends State<A3SketchingScreen> {
                                 ),
                               ],
                             ),
-                            child: GestureDetector(
-                              onPanStart: _onPanStart,
-                              onPanUpdate: _onPanUpdate,
-                              onPanEnd: _onPanEnd,
-                              child: CustomPaint(
-                                painter: _A3CadPainter(
-                                  elements: _undoStack,
-                                  currentPoints: _currentPoints,
-                                  activeTool: _activeTool,
+                            child: RepaintBoundary(
+                              child: GestureDetector(
+                                onPanStart: _onPanStart,
+                                onPanUpdate: _onPanUpdate,
+                                onPanEnd: _onPanEnd,
+                                child: CustomPaint(
+                                  painter: _A3CadPainter(
+                                    elements: _undoStack,
+                                    currentPoints: _currentPoints,
+                                    activeTool: _activeTool,
+                                  ),
+                                  size: Size.infinite,
                                 ),
-                                size: Size.infinite,
                               ),
                             ),
                           ),
@@ -329,9 +347,9 @@ class _A3CadPainter extends CustomPainter {
 
   @override
   void paint(Canvas canvas, Size size) {
-    // 1. Draw Architectural Grid: 1" main squares + 10x10 subgrids
+    // 1. Draw Architectural Grid: 1" main squares + subgrids (optimized interval to reduce draw call overhead)
     const double mainGridPx = 40.0;
-    const double subGridPx = 4.0;
+    const double subGridPx = 20.0;
 
     final subPaint = Paint()
       ..color = const Color(0xFFF0F4F8)
@@ -341,17 +359,21 @@ class _A3CadPainter extends CustomPainter {
       ..color = const Color(0xFFD2DCE6)
       ..strokeWidth = 1.0;
 
-    // Viewport-based incremental lines
-    for (double x = 0; x < size.width; x += subGridPx) {
-      canvas.drawLine(Offset(x, 0), Offset(x, size.height), subPaint);
+    // Viewport-based bounded incremental lines
+    for (double x = 0; x <= size.width; x += subGridPx) {
+      if (x % mainGridPx != 0) {
+        canvas.drawLine(Offset(x, 0), Offset(x, size.height), subPaint);
+      }
     }
-    for (double y = 0; y < size.height; y += subGridPx) {
-      canvas.drawLine(Offset(0, y), Offset(size.width, y), subPaint);
+    for (double y = 0; y <= size.height; y += subGridPx) {
+      if (y % mainGridPx != 0) {
+        canvas.drawLine(Offset(0, y), Offset(size.width, y), subPaint);
+      }
     }
-    for (double x = 0; x < size.width; x += mainGridPx) {
+    for (double x = 0; x <= size.width; x += mainGridPx) {
       canvas.drawLine(Offset(x, 0), Offset(x, size.height), mainPaint);
     }
-    for (double y = 0; y < size.height; y += mainGridPx) {
+    for (double y = 0; y <= size.height; y += mainGridPx) {
       canvas.drawLine(Offset(0, y), Offset(size.width, y), mainPaint);
     }
 

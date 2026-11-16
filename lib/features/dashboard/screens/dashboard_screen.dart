@@ -40,7 +40,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
       // Restore active workflow screen if Android killed the activity during file picking
       final savedRoute = await StorageService.getCurrentRoute();
-      if (savedRoute != null && savedRoute.isNotEmpty && savedRoute != '/' && savedRoute != '/step1') {
+      final hasIncompleteProject = _activeProject != null && _activeProject!.status != AppConstants.statusCompleted;
+      if (hasIncompleteProject && savedRoute != null && savedRoute.isNotEmpty && savedRoute != '/' && savedRoute != '/step1') {
         if (mounted) {
           WidgetsBinding.instance.addPostFrameCallback((_) {
             if (mounted) {
@@ -48,6 +49,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
             }
           });
         }
+      } else if (!hasIncompleteProject) {
+        await StorageService.clearCurrentRoute();
       }
     }
   }

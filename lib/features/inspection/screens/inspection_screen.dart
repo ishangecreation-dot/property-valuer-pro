@@ -55,6 +55,19 @@ class _InspectionScreenState extends State<InspectionScreen> {
     _loadProject();
   }
 
+  @override
+  void dispose() {
+    _branchCtrl.dispose();
+    _dateCtrl.dispose();
+    _villageCtrl.dispose();
+    _gnCtrl.dispose();
+    _koraleCtrl.dispose();
+    _dsCtrl.dispose();
+    _laCtrl.dispose();
+    _assessmentCtrl.dispose();
+    super.dispose();
+  }
+
   Future<void> _loadProject() async {
     final proj = await StorageService.loadActiveProject();
     if (proj != null) {

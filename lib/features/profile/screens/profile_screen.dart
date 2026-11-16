@@ -7,6 +7,7 @@ import '../../../core/storage/storage_service.dart';
 import '../../../core/services/ai_service.dart';
 import '../../../core/services/dossier_markdown_service.dart';
 import '../../../core/services/entitlement_service.dart';
+import '../../../core/utilities/memory_manager.dart';
 import '../../../widgets/responsive_scaffold.dart';
 import '../../../widgets/custom_form_fields.dart';
 
@@ -55,6 +56,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
     _phone1Controller.dispose();
     _phone2Controller.dispose();
     _additionalController.dispose();
+    MemoryManager.optimizeMemory();
     super.dispose();
   }
 
@@ -408,6 +410,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
     );
     setState(() {
       _profile = newDraft;
+      if (!_drafts.any((d) => d.id == newDraft.id)) {
+        _drafts.add(newDraft);
+      }
       _populateControllers(newDraft);
     });
     ScaffoldMessenger.of(context).showSnackBar(
@@ -729,7 +734,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
                             ),
                             child: DropdownButtonHideUnderline(
                               child: DropdownButton<String>(
-                                value: _profile.id,
+                                value: _drafts.any((d) => d.id == _profile.id)
+                                    ? _profile.id
+                                    : (_drafts.isNotEmpty ? _drafts.first.id : null),
                                 isExpanded: true,
                                 icon: const Icon(Icons.arrow_drop_down, color: AppColors.primaryNavy),
                                 items: _drafts.map((d) {
