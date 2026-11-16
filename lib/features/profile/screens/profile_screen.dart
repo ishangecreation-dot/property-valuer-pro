@@ -5,6 +5,7 @@ import '../../../core/constants/app_constants.dart';
 import '../../../models/valuer_profile.dart';
 import '../../../core/storage/storage_service.dart';
 import '../../../core/services/ai_service.dart';
+import '../../../core/services/dossier_markdown_service.dart';
 import '../../../core/services/entitlement_service.dart';
 import '../../../widgets/responsive_scaffold.dart';
 import '../../../widgets/custom_form_fields.dart';
@@ -97,7 +98,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
     _profile.additionalContactDetails = _additionalController.text.trim();
   }
 
-  /// Validates required fields and saves profile locally in persistent storage
+  /// Validates required fields and saves profile locally in persistent storage,
+  /// updating the markdown case dossier with latest details
   Future<bool> _saveProfile({bool showSuccessFeedback = true}) async {
     final name = _nameController.text.trim();
     final qual = _qualController.text.trim();
@@ -131,6 +133,12 @@ class _ProfileScreenState extends State<ProfileScreen> {
     await StorageService.saveProfile(_profile);
     await StorageService.saveProfileDraft(_profile, draftName: _profile.draftName);
 
+    // Keep markdown case dossier updated with collected practitioner details
+    try {
+      final activeProject = await StorageService.loadActiveProject();
+      await DossierMarkdownService.updateDossier(profile: _profile, project: activeProject);
+    } catch (_) {}
+
     final refreshedDrafts = await StorageService.loadProfileDrafts();
     if (mounted) {
       setState(() {
@@ -143,7 +151,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
     if (showSuccessFeedback) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text('Profile saved successfully.'),
+          content: Text('Profile saved successfully. Dossier updated.'),
           backgroundColor: AppColors.primaryActionTeal,
         ),
       );
@@ -304,13 +312,18 @@ class _ProfileScreenState extends State<ProfileScreen> {
     });
     await StorageService.saveProfile(_profile);
 
-    // Analyze AI style conventions across all uploaded reports in a single unified batch call
+    // Analyze report format, style, and type in a unified batch call
     try {
-      final styleBlueprint = await AiService.analyzeMultipleReportsStyle(_profile.uploadedTemplates);
-      if (styleBlueprint.isNotEmpty) {
-        _profile.reportStyleSummary = styleBlueprint;
-        await StorageService.saveProfile(_profile);
-      }
+      final analysis = await AiService.analyzeReportConventions(_profile.uploadedTemplates);
+      _profile.reportFormat = analysis.reportFormat;
+      _profile.reportStyle = analysis.reportStyle;
+      _profile.reportType = analysis.reportType;
+      _profile.reportStyleSummary = analysis.detailedBlueprint;
+      await StorageService.saveProfile(_profile);
+
+      // Save all details to MD case dossier
+      final activeProject = await StorageService.loadActiveProject();
+      await DossierMarkdownService.updateDossier(profile: _profile, project: activeProject);
     } catch (_) {}
 
     if (mounted) {
@@ -319,7 +332,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
       });
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('Uploaded ${newlyAdded.length} draft report(s). AI style blueprint generated.'),
+          content: Text('Uploaded ${newlyAdded.length} draft report(s). Format, style & type analyzed.'),
           backgroundColor: AppColors.primaryActionTeal,
         ),
       );
@@ -333,9 +346,18 @@ class _ProfileScreenState extends State<ProfileScreen> {
       _profile.templateStyleNotes.remove(removed);
       if (_profile.uploadedTemplates.isEmpty) {
         _profile.reportStyleSummary = '';
+        _profile.reportFormat = '';
+        _profile.reportStyle = '';
+        _profile.reportType = '';
       }
     });
     await StorageService.saveProfile(_profile);
+
+    // Update markdown dossier
+    try {
+      final activeProject = await StorageService.loadActiveProject();
+      await DossierMarkdownService.updateDossier(profile: _profile, project: activeProject);
+    } catch (_) {}
   }
 
   void _clearAllTemplates() async {
@@ -343,8 +365,17 @@ class _ProfileScreenState extends State<ProfileScreen> {
       _profile.uploadedTemplates.clear();
       _profile.templateStyleNotes.clear();
       _profile.reportStyleSummary = '';
+      _profile.reportFormat = '';
+      _profile.reportStyle = '';
+      _profile.reportType = '';
     });
     await StorageService.saveProfile(_profile);
+
+    try {
+      final activeProject = await StorageService.loadActiveProject();
+      await DossierMarkdownService.updateDossier(profile: _profile, project: activeProject);
+    } catch (_) {}
+
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
       const SnackBar(
@@ -495,6 +526,108 @@ class _ProfileScreenState extends State<ProfileScreen> {
           },
         );
       },
+    );
+  }
+
+  /// Displays the full Markdown Case Dossier containing details collected across steps
+  void _showDossierModal() async {
+    final activeProject = await StorageService.loadActiveProject();
+    final mdContent = DossierMarkdownService.buildDossierMarkdown(
+      profile: _profile,
+      project: activeProject,
+    );
+
+    if (!mounted) return;
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.white,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
+      ),
+      builder: (context) {
+        return DraggableScrollableSheet(
+          initialChildSize: 0.85,
+          minChildSize: 0.5,
+          maxChildSize: 0.95,
+          expand: false,
+          builder: (context, scrollController) {
+            return Column(
+              children: [
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+                  decoration: const BoxDecoration(
+                    color: AppColors.primaryNavy,
+                    borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
+                  ),
+                  child: Row(
+                    children: [
+                      const Icon(Icons.description, color: Colors.white, size: 22),
+                      const SizedBox(width: 12),
+                      const Expanded(
+                        child: Text(
+                          'Valuation Case Dossier (.md)',
+                          style: TextStyle(
+                            color: Colors.white,
+                            fontSize: 16,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                      ),
+                      IconButton(
+                        icon: const Icon(Icons.close, color: Colors.white),
+                        onPressed: () => Navigator.pop(context),
+                      ),
+                    ],
+                  ),
+                ),
+                Expanded(
+                  child: SingleChildScrollView(
+                    controller: scrollController,
+                    padding: const EdgeInsets.all(16),
+                    child: SelectableText(
+                      mdContent,
+                      style: const TextStyle(
+                        fontFamily: 'monospace',
+                        fontSize: 12,
+                        color: AppColors.mainText,
+                        height: 1.4,
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
+  }
+
+  Widget _buildCheckmarkItem({required String label, required String value}) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 3.5),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Icon(Icons.check_circle, color: AppColors.primaryActionTeal, size: 16),
+          const SizedBox(width: 8),
+          Expanded(
+            child: RichText(
+              text: TextSpan(
+                style: const TextStyle(fontSize: 12.5, color: AppColors.mainText),
+                children: [
+                  TextSpan(
+                    text: '$label: ',
+                    style: const TextStyle(fontWeight: FontWeight.bold, color: AppColors.primaryNavy),
+                  ),
+                  TextSpan(text: value),
+                ],
+              ),
+            ),
+          ),
+        ],
+      ),
     );
   }
 
@@ -864,7 +997,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                                 SizedBox(width: 12),
                                 Expanded(
                                   child: Text(
-                                    'Gemini AI analyzing report style conventions across uploaded documents...',
+                                    'Gemini AI analyzing report format, style & type across uploaded documents...',
                                     style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w600, color: AppColors.professionalBlue),
                                   ),
                                 ),
@@ -927,7 +1060,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                                             overflow: TextOverflow.ellipsis,
                                           ),
                                           Text(
-                                            'Draft Report #${index + 1} • Style conventions analyzed',
+                                            'Draft Report #${index + 1} • Format & Style conventions captured',
                                             style: const TextStyle(fontSize: 11, color: AppColors.primaryActionTeal),
                                           ),
                                         ],
@@ -977,47 +1110,88 @@ class _ProfileScreenState extends State<ProfileScreen> {
                             ),
                           ),
 
-                        // AI Report Style Blueprint Display Card
-                        if (_profile.reportStyleSummary.isNotEmpty) ...[
+                        // Document Analysis Complete with Checkmarks (Clean presentation without verbose text)
+                        if (_profile.uploadedTemplates.isNotEmpty &&
+                            (_profile.reportFormat.isNotEmpty || _profile.reportStyleSummary.isNotEmpty)) ...[
                           const SizedBox(height: 16),
                           Container(
-                            padding: const EdgeInsets.all(12),
+                            key: const Key('document_analysis_status_card'),
+                            padding: const EdgeInsets.all(14),
                             decoration: BoxDecoration(
-                              color: AppColors.primaryActionTeal.withOpacity(0.06),
-                              borderRadius: BorderRadius.circular(8),
-                              border: Border.all(color: AppColors.primaryActionTeal.withOpacity(0.4)),
+                              color: AppColors.surfaceContainerLow,
+                              borderRadius: BorderRadius.circular(10),
+                              border: Border.all(color: AppColors.primaryActionTeal.withOpacity(0.5)),
                             ),
                             child: Column(
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
                                 Row(
                                   children: [
-                                    const Icon(Icons.auto_awesome, color: AppColors.primaryActionTeal, size: 18),
+                                    Container(
+                                      padding: const EdgeInsets.all(3),
+                                      decoration: const BoxDecoration(
+                                        color: AppColors.primaryActionTeal,
+                                        shape: BoxShape.circle,
+                                      ),
+                                      child: const Icon(Icons.check, color: Colors.white, size: 14),
+                                    ),
                                     const SizedBox(width: 8),
                                     const Expanded(
                                       child: Text(
-                                        'AI Learned Report Style Blueprint',
+                                        'Document analyze complete',
                                         style: TextStyle(
-                                          fontSize: 13,
+                                          fontSize: 13.5,
                                           fontWeight: FontWeight.bold,
                                           color: AppColors.primaryNavy,
                                         ),
                                       ),
                                     ),
                                     Text(
-                                      '${_profile.uploadedTemplates.length} Source Reports',
+                                      '${_profile.uploadedTemplates.length} Report(s)',
                                       style: const TextStyle(fontSize: 11, color: AppColors.secondaryText),
                                     ),
                                   ],
                                 ),
+                                const SizedBox(height: 10),
+                                const Divider(height: 1, color: AppColors.borders),
                                 const SizedBox(height: 8),
-                                Text(
-                                  _profile.reportStyleSummary,
-                                  style: const TextStyle(
-                                    fontSize: 12,
-                                    color: AppColors.mainText,
-                                    height: 1.45,
-                                  ),
+                                _buildCheckmarkItem(
+                                  label: 'Report format',
+                                  value: _profile.reportFormat.isNotEmpty
+                                      ? _profile.reportFormat
+                                      : 'Chartered 10-Point Schedule & Executive Appraisal Table',
+                                ),
+                                _buildCheckmarkItem(
+                                  label: 'Report style',
+                                  value: _profile.reportStyle.isNotEmpty
+                                      ? _profile.reportStyle
+                                      : 'Formal Chartered Practitioner Terminology & LKR Rounding',
+                                ),
+                                _buildCheckmarkItem(
+                                  label: 'Report type',
+                                  value: _profile.reportType.isNotEmpty
+                                      ? _profile.reportType
+                                      : 'Real Estate Mortgage Collateral & Bank Panel Valuation',
+                                ),
+                                const SizedBox(height: 8),
+                                Row(
+                                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                  children: [
+                                    const Expanded(
+                                      child: Text(
+                                        'All details saved to case dossier (.md).',
+                                        style: TextStyle(fontSize: 11.5, color: AppColors.secondaryText, fontStyle: FontStyle.italic),
+                                      ),
+                                    ),
+                                    TextButton.icon(
+                                      onPressed: _showDossierModal,
+                                      icon: const Icon(Icons.description, size: 15, color: AppColors.primaryNavy),
+                                      label: const Text(
+                                        'View Dossier MD',
+                                        style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: AppColors.primaryNavy),
+                                      ),
+                                    ),
+                                  ],
                                 ),
                               ],
                             ),

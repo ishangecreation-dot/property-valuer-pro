@@ -6,6 +6,34 @@ import '../security/encryption_service.dart';
 import '../../models/deed_data.dart';
 import '../../models/survey_plan_data.dart';
 
+class ReportAnalysisResult {
+  final String reportFormat;
+  final String reportStyle;
+  final String reportType;
+  final String detailedBlueprint;
+
+  ReportAnalysisResult({
+    required this.reportFormat,
+    required this.reportStyle,
+    required this.reportType,
+    required this.detailedBlueprint,
+  });
+
+  Map<String, dynamic> toJson() => {
+    'reportFormat': reportFormat,
+    'reportStyle': reportStyle,
+    'reportType': reportType,
+    'detailedBlueprint': detailedBlueprint,
+  };
+
+  factory ReportAnalysisResult.fromJson(Map<String, dynamic> json) => ReportAnalysisResult(
+    reportFormat: json['reportFormat']?.toString() ?? 'Chartered 10-Point Schedule & Executive Appraisal Table',
+    reportStyle: json['reportStyle']?.toString() ?? 'Formal Chartered Practitioner Terminology & LKR Rounding',
+    reportType: json['reportType']?.toString() ?? 'Real Estate Mortgage Collateral & Bank Panel Valuation',
+    detailedBlueprint: json['detailedBlueprint']?.toString() ?? '',
+  );
+}
+
 /// Real AI Document Extraction Service powered by Gemini / OpenAI APIs.
 /// Strictly parses real documents and does NOT silently substitute hardcoded sample data.
 class AiService {
@@ -643,37 +671,58 @@ Examine this cadastral survey plan and extract all plan particulars and surveyed
         '• **Statutory Declarations:** Formal declaration of impartiality, physical site inspection certification, and Chartered Valuer seal block.';
   }
 
-  /// Analyzes multiple uploaded draft valuation reports (DOCX/PDF) in a single batch request.
-  static Future<String> analyzeMultipleReportsStyle(List<String> fileNames) async {
+  /// Analyzes multiple uploaded draft valuation reports (DOCX/PDF) in a single batch request,
+  /// extracting:
+  /// 1. Report Format
+  /// 2. Report Style
+  /// 3. Report Type
+  /// 4. Detailed Markdown Blueprint
+  static Future<ReportAnalysisResult> analyzeReportConventions(List<String> fileNames) async {
     if (analyzeReportStyleOverride != null) {
-      return analyzeReportStyleOverride!;
+      return ReportAnalysisResult(
+        reportFormat: 'Chartered 10-Point Schedule & Executive Appraisal Table',
+        reportStyle: 'Formal Chartered Practitioner Terminology & LKR Rounding',
+        reportType: 'Real Estate & Mortgage Collateral Valuation',
+        detailedBlueprint: analyzeReportStyleOverride!,
+      );
     }
     if (fileNames.isEmpty) {
-      return '';
-    }
-    if (fileNames.length == 1) {
-      return analyzeReportStyle(fileName: fileNames.first);
+      return ReportAnalysisResult(
+        reportFormat: '',
+        reportStyle: '',
+        reportType: '',
+        detailedBlueprint: '',
+      );
     }
 
     final apiKey = await EncryptionService.getAiApiKey();
     if (apiKey.trim().isEmpty) {
-      return _defaultCharteredStyleSummary(fileNames.join(', '));
+      return ReportAnalysisResult(
+        reportFormat: 'Chartered 10-Point Schedule & Executive Appraisal Table',
+        reportStyle: 'Formal Chartered Practitioner Terminology & LKR Rounding',
+        reportType: 'Real Estate Mortgage Collateral & Bank Panel Valuation',
+        detailedBlueprint: _defaultCharteredStyleSummary(fileNames.join(', ')),
+      );
     }
 
     try {
       final url = '${await _endpoint()}?key=$apiKey';
       final namesList = fileNames.map((n) => '• $n').join('\n');
       final promptText =
-          'You are an expert real estate valuation reviewer. Analyze the following uploaded draft valuation reports/templates:\n'
+          'You are an expert chartered real estate valuation reviewer. Analyze the following uploaded draft valuation reports:\n'
           '$namesList\n\n'
-          'Extract unified formatting conventions, table presentation styles, and phrasing guidelines so that future generated valuation reports '
-          'consistently reflect this valuer\'s signature style.\n\n'
-          'Extract and summarize into these 4 concise sections in clean markdown:\n'
-          '1. Executive Summary & Key Metrics Table Layout\n'
-          '2. Land & Building Valuation Presentation (Perch rates, depreciation, GRC)\n'
-          '3. Tone & Phrasing Conventions\n'
-          '4. Statutory Declaration & Signature Block Format\n'
-          'Return a professional unified style blueprint.';
+          'Extract and determine the following 4 specific properties:\n'
+          '1. "reportFormat": A concise 1-line phrase describing the structural layout (e.g. "Chartered 10-Point Schedule with Executive Appraisal Table, Boundaries Grid & GRC Breakdown").\n'
+          '2. "reportStyle": A concise 1-line phrase describing the linguistic tone and terminology (e.g. "Formal Chartered Practitioner Terminology, Passive Voice & LKR Standard Rounding").\n'
+          '3. "reportType": A concise 1-line phrase describing the valuation category (e.g. "Real Estate Mortgage Collateral & Commercial Bank Panel Valuation").\n'
+          '4. "detailedBlueprint": A comprehensive, multi-section markdown specification covering section sequence, perch rates, depreciation, and certification phrasing.\n\n'
+          'Return strictly a valid JSON object matching this schema without markdown code fences:\n'
+          '{\n'
+          '  "reportFormat": "...",\n'
+          '  "reportStyle": "...",\n'
+          '  "reportType": "...",\n'
+          '  "detailedBlueprint": "..."\n'
+          '}';
 
       final response = await http.post(
         Uri.parse(url),
@@ -691,13 +740,36 @@ Examine this cadastral survey plan and extract all plan particulars and surveyed
 
       if (response.statusCode == 200) {
         final Map<String, dynamic> json = jsonDecode(response.body);
-        final result = json['candidates']?[0]?['content']?['parts']?[0]?['text'];
-        if (result != null && result.toString().trim().isNotEmpty) {
-          return result.toString().trim();
+        final rawText = json['candidates']?[0]?['content']?['parts']?[0]?['text']?.toString() ?? '';
+        final cleanText = rawText.replaceAll('```json', '').replaceAll('```', '').trim();
+
+        if (cleanText.isNotEmpty) {
+          try {
+            final parsed = jsonDecode(cleanText);
+            if (parsed is Map<String, dynamic>) {
+              return ReportAnalysisResult(
+                reportFormat: parsed['reportFormat']?.toString() ?? 'Chartered 10-Point Schedule & Executive Appraisal Table',
+                reportStyle: parsed['reportStyle']?.toString() ?? 'Formal Chartered Practitioner Terminology & LKR Rounding',
+                reportType: parsed['reportType']?.toString() ?? 'Real Estate Mortgage Collateral & Bank Panel Valuation',
+                detailedBlueprint: parsed['detailedBlueprint']?.toString() ?? _defaultCharteredStyleSummary(fileNames.join(', ')),
+              );
+            }
+          } catch (_) {}
         }
       }
     } catch (_) {}
 
-    return _defaultCharteredStyleSummary(fileNames.join(', '));
+    return ReportAnalysisResult(
+      reportFormat: 'Chartered 10-Point Schedule & Executive Appraisal Table',
+      reportStyle: 'Formal Chartered Practitioner Terminology & LKR Rounding',
+      reportType: 'Real Estate Mortgage Collateral & Bank Panel Valuation',
+      detailedBlueprint: _defaultCharteredStyleSummary(fileNames.join(', ')),
+    );
+  }
+
+  /// Analyzes multiple uploaded draft valuation reports (DOCX/PDF) in a single batch request.
+  static Future<String> analyzeMultipleReportsStyle(List<String> fileNames) async {
+    final result = await analyzeReportConventions(fileNames);
+    return result.detailedBlueprint;
   }
 }

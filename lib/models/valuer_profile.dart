@@ -12,6 +12,9 @@ class ValuerProfile {
   String additionalContactDetails;
   List<String> uploadedTemplates;
   String reportStyleSummary;
+  String reportFormat;
+  String reportStyle;
+  String reportType;
   Map<String, String> templateStyleNotes;
   DateTime? lastModified;
 
@@ -29,6 +32,9 @@ class ValuerProfile {
     this.additionalContactDetails = '',
     List<String>? uploadedTemplates,
     this.reportStyleSummary = '',
+    this.reportFormat = '',
+    this.reportStyle = '',
+    this.reportType = '',
     Map<String, String>? templateStyleNotes,
     this.lastModified,
   })  : id = id ?? (valuerName.isNotEmpty ? 'draft_${valuerName.hashCode.abs()}' : 'draft_default'),
@@ -54,6 +60,9 @@ class ValuerProfile {
     'additionalContactDetails': additionalContactDetails,
     'uploadedTemplates': uploadedTemplates,
     'reportStyleSummary': reportStyleSummary,
+    'reportFormat': reportFormat,
+    'reportStyle': reportStyle,
+    'reportType': reportType,
     'templateStyleNotes': templateStyleNotes,
     'lastModified': lastModified?.toIso8601String(),
   };
@@ -72,6 +81,9 @@ class ValuerProfile {
     additionalContactDetails: json['additionalContactDetails'] ?? '',
     uploadedTemplates: List<String>.from(json['uploadedTemplates'] ?? []),
     reportStyleSummary: json['reportStyleSummary']?.toString() ?? '',
+    reportFormat: json['reportFormat']?.toString() ?? '',
+    reportStyle: json['reportStyle']?.toString() ?? '',
+    reportType: json['reportType']?.toString() ?? '',
     templateStyleNotes: Map<String, String>.from(json['templateStyleNotes'] ?? {}),
     lastModified: json['lastModified'] != null
         ? DateTime.tryParse(json['lastModified'].toString())
@@ -92,6 +104,9 @@ class ValuerProfile {
     String? additionalContactDetails,
     List<String>? uploadedTemplates,
     String? reportStyleSummary,
+    String? reportFormat,
+    String? reportStyle,
+    String? reportType,
     Map<String, String>? templateStyleNotes,
     DateTime? lastModified,
   }) {
@@ -109,10 +124,18 @@ class ValuerProfile {
       additionalContactDetails: additionalContactDetails ?? this.additionalContactDetails,
       uploadedTemplates: uploadedTemplates ?? List.from(this.uploadedTemplates),
       reportStyleSummary: reportStyleSummary ?? this.reportStyleSummary,
+      reportFormat: reportFormat ?? this.reportFormat,
+      reportStyle: reportStyle ?? this.reportStyle,
+      reportType: reportType ?? this.reportType,
       templateStyleNotes: templateStyleNotes ?? Map.from(this.templateStyleNotes),
       lastModified: lastModified ?? this.lastModified,
     );
   }
+
+  /// Whether document analysis has been performed on uploaded draft reports
+  bool get isDocumentAnalysisComplete =>
+      uploadedTemplates.isNotEmpty &&
+      (reportFormat.isNotEmpty || reportStyleSummary.isNotEmpty);
 
   /// Checks if minimum required professional credentials have been configured
   bool get isConfigured =>

@@ -4,6 +4,7 @@ import '../../models/valuer_profile.dart';
 import '../../models/valuation_project.dart';
 import '../../models/monthly_report_usage.dart';
 import '../constants/app_constants.dart';
+import '../services/dossier_markdown_service.dart';
 
 class StorageService {
   static const String _keyProfile = 'val_user_profile';
@@ -11,6 +12,18 @@ class StorageService {
   static const String _keyProjects = 'val_projects_list';
   static const String _keyActiveProjectId = 'val_active_project_id';
   static const String _keyCurrentRoute = 'val_current_active_route';
+  static const String _keyDossierMarkdown = 'val_case_dossier_markdown';
+
+  // Case Dossier Markdown Persistence
+  static Future<void> saveDossierMarkdown(String md) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(_keyDossierMarkdown, md);
+  }
+
+  static Future<String> loadDossierMarkdown() async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getString(_keyDossierMarkdown) ?? '';
+  }
 
   // Active Screen / Route Persistence across Android Activity recreation
   static Future<void> setCurrentRoute(String route) async {
@@ -147,6 +160,12 @@ class StorageService {
       projects.insert(0, project);
     }
     await saveProjects(projects);
+
+    // Keep markdown case dossier synchronized with latest step data
+    try {
+      final profile = await loadProfile();
+      await DossierMarkdownService.updateDossier(profile: profile, project: project);
+    } catch (_) {}
   }
 
   static Future<ValuationProject?> loadActiveProject() async {

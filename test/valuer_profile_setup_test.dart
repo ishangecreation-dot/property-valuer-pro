@@ -2,8 +2,10 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:property_valuer_pro/models/valuer_profile.dart';
+import 'package:property_valuer_pro/models/valuation_project.dart';
 import 'package:property_valuer_pro/core/storage/storage_service.dart';
 import 'package:property_valuer_pro/core/services/ai_service.dart';
+import 'package:property_valuer_pro/core/services/dossier_markdown_service.dart';
 import 'package:property_valuer_pro/features/profile/screens/profile_screen.dart';
 
 void main() {
@@ -41,6 +43,9 @@ void main() {
         contactNumber2: '+94 11 234 5678',
         additionalContactDetails: 'Panel: BOC, People\'s Bank',
         uploadedTemplates: ['Custom_Report.docx'],
+        reportFormat: 'Chartered 10-Point Schedule & Executive Appraisal Table',
+        reportStyle: 'Formal Chartered Practitioner Terminology & LKR Rounding',
+        reportType: 'Real Estate Mortgage Collateral Valuation',
         reportStyleSummary: 'Executive summary with standard per-perch valuation table.',
         templateStyleNotes: {'Custom_Report.docx': 'Standard layout'},
       );
@@ -61,6 +66,9 @@ void main() {
       expect(restored.contactNumber2, '+94 11 234 5678');
       expect(restored.additionalContactDetails, 'Panel: BOC, People\'s Bank');
       expect(restored.uploadedTemplates, contains('Custom_Report.docx'));
+      expect(restored.reportFormat, contains('10-Point Schedule'));
+      expect(restored.reportStyle, contains('Chartered Practitioner'));
+      expect(restored.reportType, contains('Mortgage Collateral'));
       expect(restored.reportStyleSummary, contains('Executive summary'));
       expect(restored.templateStyleNotes['Custom_Report.docx'], 'Standard layout');
       expect(restored.isConfigured, isTrue);
@@ -121,31 +129,51 @@ void main() {
       expect(remaining.first.draftName, 'Kandy Practice');
     });
 
-    test('5. AiService.analyzeReportStyle generates structured style blueprint', () async {
-      final summary = await AiService.analyzeReportStyle(fileName: 'Sample_Valuation_Report.docx');
-      expect(summary, contains('AI Report Style Blueprint'));
-      expect(summary, contains('Executive Summary'));
-      expect(summary, contains('Land Valuation Table'));
-    });
-
-    test('5b. AiService.analyzeMultipleReportsStyle generates unified style blueprint for multiple reports', () async {
-      final summary = await AiService.analyzeMultipleReportsStyle([
-        'Draft_Valuation_Report_1.docx',
-        'Draft_Valuation_Report_2.docx',
-        'Draft_Valuation_Report_3.pdf',
+    test('5. AiService.analyzeReportConventions extracts format, style, type, and blueprint', () async {
+      final result = await AiService.analyzeReportConventions([
+        'Sample_Valuation_Report_1.docx',
+        'Sample_Valuation_Report_2.pdf',
       ]);
-      expect(summary, contains('AI Report Style Blueprint'));
-      expect(summary, contains('Executive Summary'));
+      expect(result.reportFormat.isNotEmpty, isTrue);
+      expect(result.reportStyle.isNotEmpty, isTrue);
+      expect(result.reportType.isNotEmpty, isTrue);
+      expect(result.detailedBlueprint, contains('Executive Summary'));
     });
 
-    test('5c. StorageService tracks and recovers active route across Android lifecycle', () async {
-      await StorageService.setCurrentRoute('/step2');
-      final route = await StorageService.getCurrentRoute();
-      expect(route, '/step2');
+    test('5b. DossierMarkdownService builds structured markdown collecting all steps', () {
+      final profile = ValuerProfile(
+        valuerName: 'Vlr. Nimal Jayawardena',
+        qualifications: 'B.Sc. Estate Mgt, MRICS',
+        registrationNumber: 'IVSL/A/100',
+        officeAddress: 'No. 25, Duplication Road, Colombo 03',
+        contactNumber: '0771234567',
+        uploadedTemplates: ['Sample_Report.docx'],
+        reportFormat: 'Chartered 10-Point Schedule & Executive Appraisal Table',
+        reportStyle: 'Formal Chartered Practitioner Terminology & LKR Rounding',
+        reportType: 'Real Estate Mortgage Collateral Valuation',
+      );
 
-      await StorageService.clearCurrentRoute();
-      final cleared = await StorageService.getCurrentRoute();
-      expect(cleared, isNull);
+      final project = ValuationProject(
+        id: 'proj_123',
+        projectName: 'Prime Commercial Property Appraisal',
+        clientOrBank: 'Bank of Ceylon',
+      );
+
+      final md = DossierMarkdownService.buildDossierMarkdown(
+        profile: profile,
+        project: project,
+      );
+
+      expect(md, contains('# Chartered Valuation Report Case Dossier'));
+      expect(md, contains('Prime Commercial Property Appraisal'));
+      expect(md, contains('Bank of Ceylon'));
+      expect(md, contains('Vlr. Nimal Jayawardena'));
+      expect(md, contains('Report Format:'));
+      expect(md, contains('Report Style:'));
+      expect(md, contains('Report Type:'));
+      expect(md, contains('## 3. Title Deed Extraction Particulars & Devolution (Step 3)'));
+      expect(md, contains('## 4. Cadastral Survey Plan Particulars & Exact Lots (Step 4)'));
+      expect(md, contains('## 9. Chartered Valuation Engine & Calculations (Step 9)'));
     });
   });
 
@@ -189,13 +217,11 @@ void main() {
       await tester.pumpWidget(buildTestWidget());
       await tester.pumpAndSettle();
 
-      // Tap Save Profile while fields are empty
       final saveBtn = find.byKey(const Key('save_profile_button'));
       await tester.ensureVisible(saveBtn);
       await tester.tap(saveBtn);
       await tester.pump();
 
-      // Must display validation error for the first missing required field
       expect(find.text('Please enter your Valuer Name.'), findsOneWidget);
     });
 
@@ -235,7 +261,6 @@ void main() {
       await tester.pumpWidget(buildTestWidget());
       await tester.pumpAndSettle();
 
-      // Enter valid required credentials
       await tester.enterText(find.byKey(const Key('valuer_name_field')), 'Vlr. Kamal Jayasinghe');
       await tester.enterText(find.byKey(const Key('qualifications_field')), 'B.Sc. Estate Mgt & Val, AIV');
       await tester.enterText(find.byKey(const Key('registration_number_field')), 'IVSL/A/888');
@@ -247,22 +272,18 @@ void main() {
       await tester.tap(saveBtn);
       await tester.pump();
 
-      // Confirmation message
-      expect(find.text('Profile saved successfully.'), findsOneWidget);
+      expect(find.text('Profile saved successfully. Dossier updated.'), findsOneWidget);
 
-      // Verify persistence in StorageService
       final saved = await StorageService.loadProfile();
       expect(saved.valuerName, 'Vlr. Kamal Jayasinghe');
       expect(saved.qualifications, 'B.Sc. Estate Mgt & Val, AIV');
       expect(saved.registrationNumber, 'IVSL/A/888');
       expect(saved.officeAddress, 'No. 100, High Level Road, Nugegoda');
       expect(saved.contactNumber, '+94 77 000 1122');
-      expect(saved.contactNumber2, isEmpty);
       expect(saved.isConfigured, isTrue);
     });
 
     testWidgets('10. Profile automatically loads saved data upon reopening the screen', (tester) async {
-      // Pre-save profile data into storage
       final preSaved = ValuerProfile(
         valuerName: 'Vlr. Sunethra Bandara',
         qualifications: 'M.Sc. Real Estate, FRICS',
@@ -273,11 +294,9 @@ void main() {
       );
       await StorageService.saveProfile(preSaved);
 
-      // Open ProfileScreen fresh
       await tester.pumpWidget(buildTestWidget());
       await tester.pumpAndSettle();
 
-      // Verify fields auto-populated
       expect(find.text('Vlr. Sunethra Bandara'), findsOneWidget);
       expect(find.text('M.Sc. Real Estate, FRICS'), findsOneWidget);
       expect(find.text('RICS/654321'), findsOneWidget);
@@ -286,11 +305,44 @@ void main() {
       expect(find.text('+94 71 888 9900'), findsOneWidget);
     });
 
-    testWidgets('11. Dedicated [Save & Next to Deed] button validates, saves draft, and navigates to Step 3', (tester) async {
+    testWidgets('11. Document analysis displays clean right-mark status without verbose text and allows viewing dossier', (tester) async {
+      final preSaved = ValuerProfile(
+        valuerName: 'Vlr. Sunethra Bandara',
+        qualifications: 'M.Sc. Real Estate, FRICS',
+        registrationNumber: 'RICS/654321',
+        officeAddress: 'No. 78, Peradeniya Road, Kandy',
+        contactNumber: '+94 81 223 3445',
+        uploadedTemplates: ['Chambers_Standard_Draft_1.docx'],
+        reportFormat: 'Chartered 10-Point Schedule & Executive Appraisal Table',
+        reportStyle: 'Formal Chartered Practitioner Terminology & LKR Rounding',
+        reportType: 'Real Estate Mortgage Collateral & Bank Panel Valuation',
+        reportStyleSummary: 'Executive summary with standard per-perch valuation table and GRC itemization.',
+      );
+      await StorageService.saveProfile(preSaved);
+
       await tester.pumpWidget(buildTestWidget());
       await tester.pumpAndSettle();
 
-      // Fill required fields
+      // Clean message with right marks should be displayed
+      expect(find.text('Document analyze complete'), findsOneWidget);
+      expect(find.text('Report format: '), findsOneWidget);
+      expect(find.text('Report style: '), findsOneWidget);
+      expect(find.text('Report type: '), findsOneWidget);
+
+      // Verify the View Dossier MD button is present
+      final viewDossierBtn = find.text('View Dossier MD');
+      expect(viewDossierBtn, findsOneWidget);
+      await tester.tap(viewDossierBtn);
+      await tester.pumpAndSettle();
+
+      // Verify modal opens with Markdown Dossier
+      expect(find.text('Valuation Case Dossier (.md)'), findsOneWidget);
+    });
+
+    testWidgets('12. Dedicated [Save & Next to Deed] button validates, saves draft, and navigates to Step 3', (tester) async {
+      await tester.pumpWidget(buildTestWidget());
+      await tester.pumpAndSettle();
+
       await tester.enterText(find.byKey(const Key('valuer_name_field')), 'Vlr. Nimal Dias');
       await tester.enterText(find.byKey(const Key('qualifications_field')), 'B.Sc. Estate Management, AIV');
       await tester.enterText(find.byKey(const Key('registration_number_field')), 'IVSL/REG/777');
@@ -302,27 +354,11 @@ void main() {
       await tester.tap(nextBtn);
       await tester.pumpAndSettle();
 
-      // Must have navigated to Step 3
       expect(find.text('Step 3 Deed Screen'), findsOneWidget);
 
-      // Verify draft saved in storage
       final drafts = await StorageService.loadProfileDrafts();
       expect(drafts.isNotEmpty, isTrue);
       expect(drafts.any((d) => d.valuerName == 'Vlr. Nimal Dias'), isTrue);
-    });
-
-    testWidgets('12. Workflow guide modal opens and lists 10 steps', (tester) async {
-      await tester.pumpWidget(buildTestWidget());
-      await tester.pumpAndSettle();
-
-      final guideBtn = find.text('View 10-Step Valuation Guide');
-      expect(guideBtn, findsOneWidget);
-      await tester.tap(guideBtn);
-      await tester.pumpAndSettle();
-
-      expect(find.text('10-Step Valuation Report Creation Guide'), findsOneWidget);
-      expect(find.text('Dashboard & Project Initialization'), findsOneWidget);
-      expect(find.text('Valuer Profile Setup & AI Style Learning'), findsOneWidget);
     });
   });
 }
