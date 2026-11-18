@@ -7,6 +7,7 @@ import '../../../models/deed_data.dart';
 import '../../../core/storage/storage_service.dart';
 import '../../../core/services/ai_service.dart';
 import '../../../core/utilities/memory_manager.dart';
+import '../../../app/routes.dart';
 import '../../../widgets/responsive_scaffold.dart';
 import '../../../widgets/custom_form_fields.dart';
 
@@ -229,9 +230,29 @@ class _DeedExtractionScreenState extends State<DeedExtractionScreen> {
       },
       onNext: () {
         _syncControllersToData();
-        Navigator.pushNamed(context, '/step4');
+        if (AppRoutes.areScreens3To10Frozen) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Row(
+                children: [
+                  Icon(Icons.check_circle, color: Colors.white, size: 18),
+                  SizedBox(width: 8),
+                  Expanded(
+                    child: Text('Title Deed Saved! Screens 3 to 10 are currently frozen until unfreeze.'),
+                  ),
+                ],
+              ),
+              backgroundColor: AppColors.primaryNavy,
+              duration: Duration(seconds: 3),
+            ),
+          );
+        } else {
+          Navigator.pushNamed(context, '/step4');
+        }
       },
-      nextLabel: 'Save & Continue to Plan',
+      nextLabel: AppRoutes.areScreens3To10Frozen
+          ? 'Save Deed (Screens 3-10 Frozen)'
+          : 'Save & Continue to Plan',
       body: _isLoading
           ? const Center(child: CircularProgressIndicator())
           : isTablet

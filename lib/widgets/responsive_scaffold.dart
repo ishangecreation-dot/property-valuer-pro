@@ -3,6 +3,7 @@ import '../core/constants/app_colors.dart';
 import '../widgets/workflow_header.dart';
 import '../widgets/tablet_navigation_rail.dart';
 import '../widgets/ad_banner_placeholder.dart';
+import '../app/routes.dart';
 import '../features/settings/screens/admin_settings_modal.dart';
 
 class ResponsiveWorkflowScaffold extends StatelessWidget {
@@ -31,6 +32,16 @@ class ResponsiveWorkflowScaffold extends StatelessWidget {
 
   void _navigateToStep(BuildContext context, int step) {
     if (step == currentStep) return;
+    if (AppRoutes.areScreens3To10Frozen && step > 3) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Step $step is currently frozen until unfreeze. Only Screens 0 to 2 are active.'),
+          backgroundColor: AppColors.primaryNavy,
+          duration: const Duration(seconds: 2),
+        ),
+      );
+      return;
+    }
     Navigator.pushNamed(context, '/step$step');
   }
 
