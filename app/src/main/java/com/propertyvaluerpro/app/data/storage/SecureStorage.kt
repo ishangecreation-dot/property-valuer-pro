@@ -19,7 +19,8 @@ class SecureStorage(context: Context) {
 
     companion object {
         const val DEFAULT_ADMIN_PASSWORD = "admin@valuer"
-        const val DEFAULT_AI_PROVIDER = "gemini-2.5-flash"
+        const val DEFAULT_AI_PROVIDER = "gemini-3.1-flash-lite"
+        const val SECONDARY_AI_PROVIDER = "gemini-3.5-flash-lite"
         private const val KEY_ALIAS = "PropertyValuerProAesKey"
         private const val KEY_API = "val_secure_ai_api_key_enc"
         private const val KEY_ADMIN_PW = "val_secure_admin_pw_enc"
@@ -97,7 +98,7 @@ class SecureStorage(context: Context) {
 
     fun getAiProvider(): String {
         val saved = prefs.getString(KEY_PROVIDER, null)?.trim()
-        if (saved.isNullOrEmpty() || saved.contains("1.5")) {
+        if (saved.isNullOrEmpty() || saved.contains("1.5") || saved == "gemini-2.0-flash" || saved == "gemini-2.5-flash") {
             return DEFAULT_AI_PROVIDER
         }
         return saved

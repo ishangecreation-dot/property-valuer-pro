@@ -167,7 +167,7 @@ class ValuationRepository(context: Context) {
         prefs.edit().putString(KEY_META_INTERSTITIAL_ID, id.trim()).apply()
     }
 
-    fun areScreens3To10Frozen(): Boolean = prefs.getBoolean(KEY_SCREENS_FROZEN, false)
+    fun areScreens3To10Frozen(): Boolean = prefs.getBoolean(KEY_SCREENS_FROZEN, true)
     fun setScreens3To10Frozen(frozen: Boolean) {
         prefs.edit().putBoolean(KEY_SCREENS_FROZEN, frozen).apply()
     }

@@ -443,6 +443,7 @@ fun FrozenStepContent(
     stepNumber: Int,
     stepName: String,
     onReturnToDeed: () -> Unit,
+    onReturnToProfile: () -> Unit = {},
     onReturnToDashboard: () -> Unit,
 ) {
     Column(
@@ -473,7 +474,7 @@ fun FrozenStepContent(
         )
         Spacer(Modifier.height(10.dp))
         Text(
-            text = "$stepName is currently locked because Workflow Freeze is enabled in Admin Settings.",
+            text = "$stepName is currently locked. Screens 3 to 10 are frozen for focused verification of Screens 0 to 2.",
             fontSize = 13.5.sp,
             color = AppColors.SecondaryText,
             textAlign = TextAlign.Center,
@@ -486,7 +487,16 @@ fun FrozenStepContent(
         ) {
             Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = null, modifier = Modifier.size(18.dp))
             Spacer(Modifier.width(8.dp))
-            Text("Return to Title Deed")
+            Text("Return to Title Deed (Screen 2)")
+        }
+        Spacer(Modifier.height(10.dp))
+        OutlinedButton(
+            onClick = onReturnToProfile,
+            shape = RoundedCornerShape(10.dp),
+        ) {
+            Icon(Icons.Default.Person, contentDescription = null, modifier = Modifier.size(18.dp))
+            Spacer(Modifier.width(8.dp))
+            Text("Return to Valuer Profile (Screen 1)")
         }
         Spacer(Modifier.height(10.dp))
         OutlinedButton(
@@ -495,7 +505,7 @@ fun FrozenStepContent(
         ) {
             Icon(Icons.Default.Dashboard, contentDescription = null, modifier = Modifier.size(18.dp))
             Spacer(Modifier.width(8.dp))
-            Text("Return to Dashboard")
+            Text("Return to Dashboard (Screen 0)")
         }
     }
 }

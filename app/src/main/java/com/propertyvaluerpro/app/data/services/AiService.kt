@@ -28,24 +28,31 @@ class AiService(
 ) {
     companion object {
         private const val GEMINI_API_ROOT = "https://generativelanguage.googleapis.com/v1beta/models/"
-        const val DEFAULT_MODEL_ID = "gemini-2.5-flash"
+        const val DEFAULT_MODEL_ID = "gemini-3.1-flash-lite"
+        const val SECONDARY_DEFAULT_MODEL_ID = "gemini-3.5-flash-lite"
 
         val DEFAULT_WORKING_MODELS = listOf(
-            "gemini-2.5-flash",
+            "gemini-3.1-flash-lite",
+            "gemini-3.5-flash-lite",
+            "gemini-3.1-flash-lite-preview",
+            "gemini-flash-lite-latest",
             "gemini-2.5-flash-lite",
-            "gemini-2.5-pro",
-            "gemini-2.0-flash",
+            "gemini-2.5-flash",
             "gemini-flash-latest",
         )
 
         fun resolveModelId(provider: String): String {
             val clean = provider.trim().removePrefix("models/")
-            if (clean.isEmpty() || clean.contains("1.5")) return DEFAULT_MODEL_ID
+            val lower = clean.lowercase()
+            if (lower == "3.1-flash-lite" || lower == "3.1" || lower == "flash-lite-3.1") return "gemini-3.1-flash-lite"
+            if (lower == "3.5-flash-lite" || lower == "3.5" || lower == "flash-lite-3.5") return "gemini-3.5-flash-lite"
+            if (clean.isEmpty() || clean.contains("1.5") || clean == "gemini-2.0-flash" || clean == "gemini-2.5-flash") return DEFAULT_MODEL_ID
             return clean
         }
 
         fun formatModelLabel(modelId: String): String {
-            if (modelId == DEFAULT_MODEL_ID) return "Gemini 2.5 Flash (Recommended)"
+            if (modelId == "gemini-3.1-flash-lite") return "Gemini 3.1 Flash-Lite (Recommended Default)"
+            if (modelId == "gemini-3.5-flash-lite") return "Gemini 3.5 Flash-Lite (Default Option)"
             return modelId
                 .replace("gemini-", "Gemini ")
                 .split("-")
@@ -96,12 +103,16 @@ class AiService(
     }
 
     private fun priority(model: String): Int = when {
-        model == "gemini-2.5-flash" -> 0
-        model == "gemini-2.5-flash-lite" -> 1
-        model.contains("flash-lite") -> 2
-        model.contains("flash") -> 3
-        model.contains("pro") -> 4
-        else -> 5
+        model == "gemini-3.1-flash-lite" -> 0
+        model == "gemini-3.5-flash-lite" -> 1
+        model == "gemini-3.1-flash-lite-preview" -> 2
+        model == "gemini-flash-lite-latest" -> 3
+        model.contains("3.1") && model.contains("flash-lite") -> 4
+        model.contains("3.5") && model.contains("flash-lite") -> 5
+        model.contains("flash-lite") -> 6
+        model.contains("flash") -> 7
+        model.contains("pro") -> 8
+        else -> 9
     }
 
     suspend fun testConnectionDetailed(): ConnectionTestResult = withContext(Dispatchers.IO) {

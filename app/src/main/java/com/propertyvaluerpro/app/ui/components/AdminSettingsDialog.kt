@@ -105,10 +105,27 @@ fun AdminSettingsDialog(
     var screensFrozen by remember { mutableStateOf(viewModel.repository.areScreens3To10Frozen()) }
     var usageState by remember { mutableStateOf(viewModel.repository.getMonthlyUsage()) }
 
+    fun applyModelDefault(list: List<String>) {
+        if (list.isNotEmpty()) {
+            availableModels = list
+            val currentResolved = AiService.resolveModelId(selectedModel)
+            if (!list.contains(currentResolved) || currentResolved.isEmpty()) {
+                selectedModel = when {
+                    list.contains(AiService.DEFAULT_MODEL_ID) -> AiService.DEFAULT_MODEL_ID
+                    list.contains(AiService.SECONDARY_DEFAULT_MODEL_ID) -> AiService.SECONDARY_DEFAULT_MODEL_ID
+                    list.any { it.contains("3.1") && it.contains("flash-lite") } -> list.first { it.contains("3.1") && it.contains("flash-lite") }
+                    list.any { it.contains("3.5") && it.contains("flash-lite") } -> list.first { it.contains("3.5") && it.contains("flash-lite") }
+                    else -> list.first()
+                }
+                viewModel.secureStorage.saveAiProvider(selectedModel)
+            }
+        }
+    }
+
     LaunchedEffect(isAuthenticated) {
         if (isAuthenticated && apiKey.isNotBlank()) {
             val fetched = viewModel.fetchModels(apiKey)
-            if (fetched.isNotEmpty()) availableModels = fetched
+            applyModelDefault(fetched)
         }
     }
 
@@ -233,6 +250,10 @@ fun AdminSettingsDialog(
                                     onClick = {
                                         clipboard.getText()?.text?.trim()?.let { pasted ->
                                             apiKey = pasted
+                                            scope.launch {
+                                                val list = viewModel.fetchModels(pasted)
+                                                applyModelDefault(list)
+                                            }
                                         }
                                     },
                                 ) {
@@ -274,7 +295,7 @@ fun AdminSettingsDialog(
                                         scope.launch {
                                             isFetchingModels = true
                                             val list = viewModel.fetchModels(apiKey)
-                                            if (list.isNotEmpty()) availableModels = list
+                                            applyModelDefault(list)
                                             isFetchingModels = false
                                         }
                                     },
@@ -304,8 +325,28 @@ fun AdminSettingsDialog(
                             }
                             DropdownMenu(expanded = modelDropdownExpanded, onDismissRequest = { modelDropdownExpanded = false }) {
                                 availableModels.forEach { modelId ->
+                                    val isRecommended = modelId == AiService.DEFAULT_MODEL_ID ||
+                                        modelId == AiService.SECONDARY_DEFAULT_MODEL_ID ||
+                                        modelId.contains("3.1-flash-lite") ||
+                                        modelId.contains("3.5-flash-lite")
                                     DropdownMenuItem(
-                                        text = { Text(AiService.formatModelLabel(modelId), fontSize = 13.sp) },
+                                        text = {
+                                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                                Icon(
+                                                    imageVector = if (isRecommended) Icons.Default.CheckCircle else Icons.Default.Psychology,
+                                                    contentDescription = null,
+                                                    tint = if (isRecommended) AppColors.Success else AppColors.SecondaryText,
+                                                    modifier = Modifier.size(16.dp),
+                                                )
+                                                Spacer(Modifier.width(8.dp))
+                                                Text(
+                                                    text = AiService.formatModelLabel(modelId),
+                                                    fontSize = 13.sp,
+                                                    fontWeight = if (isRecommended) FontWeight.Bold else FontWeight.Normal,
+                                                    color = if (isRecommended) AppColors.PrimaryNavy else AppColors.MainText,
+                                                )
+                                            }
+                                        },
                                         onClick = {
                                             selectedModel = modelId
                                             viewModel.secureStorage.saveAiProvider(modelId)
@@ -356,9 +397,10 @@ fun AdminSettingsDialog(
                                     testMessage = "Please enter your API key first."
                                 } else {
                                     viewModel.secureStorage.saveAiApiKey(apiKey)
-                                    viewModel.secureStorage.saveAiProvider(selectedModel)
+                                    val resolvedModel = AiService.resolveModelId(selectedModel)
+                                    viewModel.secureStorage.saveAiProvider(resolvedModel)
                                     testSuccess = true
-                                    testMessage = "Settings saved: $selectedModel is active."
+                                    testMessage = "Settings saved: $resolvedModel is active."
                                 }
                             },
                             colors = ButtonDefaults.buttonColors(containerColor = AppColors.PrimaryNavy),

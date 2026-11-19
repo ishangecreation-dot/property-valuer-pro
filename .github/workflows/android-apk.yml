@@ -26,105 +26,53 @@ jobs:
         with:
           distribution: 'temurin'
           java-version: '17'
-          cache: 'gradle'
 
-      - name: 3. Set up Flutter SDK
-        uses: subosito/flutter-action@v2
-        with:
-          flutter-version: '3.24.5'
-          channel: 'stable'
-          cache: true
+      - name: 3. Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
 
-      - name: 4. Verify Flutter Environment
-        run: flutter doctor -v
-
-      - name: 5. Install Dependencies
-        run: flutter pub get
-
-      - name: 6. Analyze Code Quality
-        run: flutter analyze || true
-
-      - name: 7. Run Automated Tests
+      - name: 4. Ensure Gradle Wrapper
         run: |
-          flutter test --reporter=expanded 2>&1 | tee test_results.log || true
+          gradle wrapper --gradle-version 8.11.1
+          chmod +x gradlew
 
-      - name: 7b. Download Gradle Wrapper JAR and Permissions
+      - name: 5. Build Debug Test APK (Instant Android Installation)
         run: |
-          mkdir -p android/gradle/wrapper
-          curl -sLo android/gradle/wrapper/gradle-wrapper.jar https://raw.githubusercontent.com/gradle/gradle/v8.4.0/gradle/wrapper/gradle-wrapper.jar
-          test -f android/gradle/wrapper/gradle-wrapper.jar
-          echo "Downloaded Gradle wrapper jar: $(stat -c %s android/gradle/wrapper/gradle-wrapper.jar) bytes"
-          chmod +x android/gradlew
+          ./gradlew assembleDebug --stacktrace
 
-      - name: 8. Build Debug Test APK (Instant Android Installation)
+      - name: 6. Verify and Prepare Debug Test APK
         run: |
-          flutter build apk --debug -v > flutter_debug_build.log 2>&1 || {
-            BUILD_STATUS=$?
-            echo "::error::Flutter debug build failed with code $BUILD_STATUS"
-            echo "================ LAST 250 LINES OF BUILD LOG ================"
-            tail -n 250 flutter_debug_build.log
-            echo "============================================================="
-            exit $BUILD_STATUS
-          }
-
-      - name: Record Build Failure Log to Branch
-        if: failure()
-        run: |
-          git config --global user.name "github-actions[bot]"
-          git config --global user.email "github-actions[bot]@users.noreply.github.com"
-          git checkout -B build-error-log
-          tail -n 600 flutter_debug_build.log > last_build_error.txt
-          git add last_build_error.txt
-          git commit -m "ci: capture build error log [skip ci]" || true
-          git push -f origin build-error-log || true
-
-      - name: 9. Verify and Prepare Debug Test APK
-        run: |
-          find build -name "*.apk" -ls
-          DEBUG_APK=$(find build -name "*debug*.apk" -o -name "app-*.apk" | head -n 1)
+          find app/build -name "*.apk" -ls
+          DEBUG_APK=$(find app/build -name "*debug*.apk" | head -n 1)
           echo "Found debug APK at: $DEBUG_APK"
           test -f "$DEBUG_APK"
           echo "Debug APK size: $(stat -c %s "$DEBUG_APK") bytes"
-          mkdir -p build/app/outputs/flutter-apk
-          if [ "$DEBUG_APK" != "build/app/outputs/flutter-apk/app-debug.apk" ]; then
-            cp -f "$DEBUG_APK" build/app/outputs/flutter-apk/app-debug.apk
-          fi
-          test -f build/app/outputs/flutter-apk/app-debug.apk
+          mkdir -p build-artifacts
+          cp -f "$DEBUG_APK" build-artifacts/Property-Valuer-Pro-Test.apk
 
-      - name: 10. Upload Debug Test APK Artifact (Property-Valuer-Pro-Test-APK)
+      - name: 7. Upload Debug Test APK Artifact (Property-Valuer-Pro-Test-APK)
         uses: actions/upload-artifact@v4
         with:
           name: Property-Valuer-Pro-Test-APK
-          path: build/app/outputs/flutter-apk/app-debug.apk
+          path: build-artifacts/Property-Valuer-Pro-Test.apk
           retention-days: 30
 
-      - name: 11. Build Release APK
+      - name: 8. Build Release APK
         run: |
-          flutter build apk --release -v > flutter_release_build.log 2>&1 || {
-            BUILD_STATUS=$?
-            echo "::error::Flutter release build failed with code $BUILD_STATUS"
-            echo "================ LAST 250 LINES OF RELEASE BUILD LOG ================"
-            tail -n 250 flutter_release_build.log
-            echo "============================================================="
-            exit $BUILD_STATUS
-          }
+          ./gradlew assembleRelease --stacktrace
 
-      - name: 12. Verify and Prepare Release APK
+      - name: 9. Verify and Prepare Release APK
         run: |
-          find build -name "*.apk" -ls
-          RELEASE_APK=$(find build -name "*release*.apk" | head -n 1)
+          find app/build -name "*.apk" -ls
+          RELEASE_APK=$(find app/build -name "*release*.apk" | head -n 1)
           echo "Found release APK at: $RELEASE_APK"
           test -f "$RELEASE_APK"
           echo "Release APK size: $(stat -c %s "$RELEASE_APK") bytes"
-          mkdir -p build/app/outputs/flutter-apk
-          if [ "$RELEASE_APK" != "build/app/outputs/flutter-apk/app-release.apk" ]; then
-            cp -f "$RELEASE_APK" build/app/outputs/flutter-apk/app-release.apk
-          fi
-          test -f build/app/outputs/flutter-apk/app-release.apk
+          mkdir -p build-artifacts
+          cp -f "$RELEASE_APK" build-artifacts/Property-Valuer-Pro-Release.apk
 
-      - name: 13. Upload Universal Release APK Artifact
+      - name: 10. Upload Universal Release APK Artifact
         uses: actions/upload-artifact@v4
         with:
           name: Property-Valuer-Pro-Release-APK
-          path: build/app/outputs/flutter-apk/app-release.apk
+          path: build-artifacts/Property-Valuer-Pro-Release.apk
           retention-days: 30

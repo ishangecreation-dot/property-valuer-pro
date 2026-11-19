@@ -65,6 +65,10 @@ private fun PropertyValuerProApp(
     val navController = rememberNavController()
 
     fun navigateToStep(step: Int) {
+        if (uiState.screens3To10Frozen && step >= 4) {
+            viewModel.showMessage("Step $step is currently frozen. Only Screens 0 to 2 are active.")
+            return
+        }
         val destination: Any = when (step) {
             1 -> DashboardRoute
             2 -> ProfileRoute
@@ -136,7 +140,13 @@ private fun PropertyValuerProApp(
                 onSaveDeed = viewModel::updateDeedData,
                 onExtractWithAi = viewModel::extractDeedWithAi,
                 onBack = { navController.popBackStack() },
-                onNext = { navController.navigate(PlanRoute) { launchSingleTop = true } },
+                onNext = {
+                    if (uiState.screens3To10Frozen) {
+                        viewModel.showMessage("Title Deed Saved! Screens 3 to 10 are currently frozen (only Screens 0 to 2 are active).")
+                    } else {
+                        navController.navigate(PlanRoute) { launchSingleTop = true }
+                    }
+                },
                 onNavigateToStep = ::navigateToStep,
                 onOpenSettings = viewModel::openAdminSettings,
                 onSnackbarDismissed = viewModel::clearSnackbar,
@@ -306,6 +316,7 @@ private fun FrozenAwareStep(
                 stepNumber = stepNumber,
                 stepName = stepName,
                 onReturnToDeed = { navController.navigate(DeedRoute) { launchSingleTop = true } },
+                onReturnToProfile = { navController.navigate(ProfileRoute) { launchSingleTop = true } },
                 onReturnToDashboard = {
                     navController.navigate(DashboardRoute) {
                         popUpTo(DashboardRoute) { inclusive = true }

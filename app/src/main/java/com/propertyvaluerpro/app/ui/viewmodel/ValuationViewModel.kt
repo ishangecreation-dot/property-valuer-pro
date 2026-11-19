@@ -35,7 +35,7 @@ data class AppUiState(
     val adsEnabled: Boolean = false,
     val adProvider: String = AppConstants.AD_PROVIDER_META,
     val metaInterstitialId: String = AppConstants.DEFAULT_META_INTERSTITIAL_ID,
-    val screens3To10Frozen: Boolean = false,
+    val screens3To10Frozen: Boolean = true,
     val showAdminSettings: Boolean = false,
     val showLimitDialog: Boolean = false,
     val isExtracting: Boolean = false,
