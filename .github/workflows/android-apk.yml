@@ -32,7 +32,7 @@ jobs:
 
       - name: 4. Ensure Gradle Wrapper
         run: |
-          gradle wrapper --gradle-version 8.11.1
+          gradle wrapper --gradle-version 9.3.1
           chmod +x gradlew
 
       - name: 5. Build Debug Test APK (Instant Android Installation)
