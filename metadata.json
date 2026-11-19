@@ -1,0 +1,8 @@
+{
+  "name": "Property Valuer Pro",
+  "description": "Real estate valuation and editable DOCX report generation application for chartered valuers.",
+  "requestFramePermissions": [],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}

@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Property Valuer Pro</string>
+    <string name="admin_settings">Admin Settings</string>
+    <string name="create_new_valuation">+ Create New Valuation</string>
+    <string name="continue_valuation">Continue Valuation</string>
+    <string name="resume_workflow">Resume Guided Workflow</string>
+    <string name="recent_projects">Recent Projects</string>
+    <string name="back">Back</string>
+    <string name="next_step">Next Step</string>
+</resources>
