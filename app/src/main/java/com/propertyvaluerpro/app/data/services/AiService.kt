@@ -535,7 +535,24 @@ class AiService(
         -1 to (e.message ?: "Unknown network error")
     }
 
+    var onTokenUsageRecorded: ((inputTokens: Long, outputTokens: Long) -> Unit)? = null
+
+    private fun trackUsageMetadata(responseBody: String) {
+        runCatching {
+            val root = JSONObject(responseBody)
+            val usage = root.optJSONObject("usageMetadata")
+            if (usage != null) {
+                val inTokens = usage.optLong("promptTokenCount", 0L)
+                val outTokens = usage.optLong("candidatesTokenCount", 0L)
+                if (inTokens > 0L || outTokens > 0L) {
+                    onTokenUsageRecorded?.invoke(inTokens, outTokens)
+                }
+            }
+        }
+    }
+
     private fun extractCandidateText(responseBody: String): String {
+        trackUsageMetadata(responseBody)
         val root = JSONObject(responseBody)
         val raw = root.optJSONArray("candidates")
             ?.optJSONObject(0)

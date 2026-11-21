@@ -47,7 +47,24 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.material.icons.filled.AccountCircle
+import androidx.compose.material.icons.filled.AdminPanelSettings
+import androidx.compose.material.icons.filled.ExitToApp
+import androidx.compose.material.icons.filled.Key
+import androidx.compose.material.icons.filled.Login
+import androidx.compose.material.icons.filled.Security
+import androidx.compose.material.icons.filled.Speed
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.Surface
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import com.propertyvaluerpro.app.data.models.AppConstants
+import com.propertyvaluerpro.app.data.models.FirebaseUserProfile
 import com.propertyvaluerpro.app.data.models.ValuationProject
 import com.propertyvaluerpro.app.ui.components.ResponsiveWorkflowScaffold
 import com.propertyvaluerpro.app.ui.theme.AppColors
@@ -67,8 +84,12 @@ fun DashboardScreen(
     onOpenSettings: () -> Unit,
     onOpenLimitDialog: () -> Unit,
     onSnackbarDismissed: () -> Unit,
+    onGoogleSignIn: () -> Unit = {},
+    onManualSignIn: (String, String) -> Unit = { _, _ -> },
+    onSignOut: () -> Unit = {},
 ) {
     val dateFormat = SimpleDateFormat("dd/MM/yyyy", Locale.US)
+    var showQuickSignInDialog by remember { mutableStateOf(false) }
 
     ResponsiveWorkflowScaffold(
         currentStep = 1,
@@ -163,6 +184,138 @@ fun DashboardScreen(
                         Icon(Icons.Default.AddCircleOutline, contentDescription = null, modifier = Modifier.size(20.dp))
                         Spacer(Modifier.width(8.dp))
                         Text("+ Create New Valuation", fontSize = 15.5.sp, fontWeight = FontWeight.Bold)
+                    }
+                }
+            }
+
+            Spacer(Modifier.height(16.dp))
+
+            // Firebase Authentication & User Profile Section
+            val fbUser = uiState.firebaseUser
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                colors = CardDefaults.cardColors(containerColor = Color.White),
+                border = BorderStroke(1.dp, if (fbUser?.isAdmin == true) AppColors.PrimaryNavy else Color(0xFFE2E8F0)),
+                shape = RoundedCornerShape(12.dp),
+            ) {
+                Column(modifier = Modifier.padding(14.dp)) {
+                    if (fbUser == null) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                        ) {
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text("Cloud Firestore & Authentication", fontWeight = FontWeight.Bold, color = AppColors.PrimaryNavy, fontSize = 14.5.sp)
+                                Text("Sign in with Google to sync quota, tokens & reports", fontSize = 12.sp, color = AppColors.NeutralGray)
+                            }
+                            Button(
+                                onClick = onGoogleSignIn,
+                                colors = ButtonDefaults.buttonColors(containerColor = AppColors.PrimaryNavy),
+                                shape = RoundedCornerShape(8.dp),
+                            ) {
+                                Icon(Icons.Default.Login, contentDescription = null, modifier = Modifier.size(16.dp))
+                                Spacer(Modifier.width(6.dp))
+                                Text("Google Sign-In", fontSize = 12.5.sp, fontWeight = FontWeight.Bold)
+                            }
+                        }
+                        Spacer(Modifier.height(8.dp))
+                        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
+                            TextButton(
+                                onClick = { showQuickSignInDialog = true },
+                                modifier = Modifier.height(28.dp),
+                            ) {
+                                Text("Quick Test / Admin Sign-In", fontSize = 11.5.sp, color = AppColors.PrimaryActionTeal)
+                            }
+                        }
+                    } else {
+                        // User Profile Display
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                        ) {
+                            Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.weight(1f)) {
+                                Box(
+                                    modifier = Modifier
+                                        .size(40.dp)
+                                        .clip(CircleShape)
+                                        .background(if (fbUser.isAdmin) AppColors.PrimaryNavy else AppColors.PrimaryActionTeal),
+                                    contentAlignment = Alignment.Center,
+                                ) {
+                                    Text(
+                                        text = fbUser.name.take(1).uppercase().ifBlank { "U" },
+                                        fontWeight = FontWeight.Bold,
+                                        color = Color.White,
+                                        fontSize = 17.sp,
+                                    )
+                                }
+                                Spacer(Modifier.width(10.dp))
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                        Text(
+                                            text = fbUser.name,
+                                            fontWeight = FontWeight.Bold,
+                                            color = AppColors.TextDark,
+                                            fontSize = 14.sp,
+                                        )
+                                        Spacer(Modifier.width(6.dp))
+                                        Surface(
+                                            color = if (fbUser.isAdmin) AppColors.PrimaryNavy else Color(0xFFE2E8F0),
+                                            shape = RoundedCornerShape(4.dp),
+                                        ) {
+                                            Text(
+                                                text = fbUser.role.uppercase(),
+                                                color = if (fbUser.isAdmin) Color.White else Color(0xFF475569),
+                                                fontSize = 9.sp,
+                                                fontWeight = FontWeight.Bold,
+                                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
+                                            )
+                                        }
+                                    }
+                                    Text(
+                                        text = fbUser.email,
+                                        fontSize = 12.sp,
+                                        color = AppColors.NeutralGray,
+                                    )
+                                }
+                            }
+
+                            Row {
+                                if (fbUser.isAdmin) {
+                                    IconButton(onClick = onOpenSettings) {
+                                        Icon(Icons.Default.AdminPanelSettings, contentDescription = "Admin Panel", tint = AppColors.PrimaryNavy)
+                                    }
+                                }
+                                IconButton(onClick = onSignOut) {
+                                    Icon(Icons.Default.ExitToApp, contentDescription = "Sign Out", tint = Color(0xFFDC2626))
+                                }
+                            }
+                        }
+
+                        Spacer(Modifier.height(10.dp))
+                        HorizontalDivider(color = Color(0xFFF1F5F9))
+                        Spacer(Modifier.height(8.dp))
+
+                        // Stats Grid: Generated Report, Model, In/Out Tokens, Avg
+                        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                            Column {
+                                Text("Generated Reports", fontSize = 10.5.sp, color = AppColors.NeutralGray)
+                                Text(fbUser.generatedReport, fontSize = 12.5.sp, fontWeight = FontWeight.Bold, color = AppColors.TextDark)
+                            }
+                            Column {
+                                Text("API Model in App", fontSize = 10.5.sp, color = AppColors.NeutralGray)
+                                Text(fbUser.apiModel, fontSize = 12.5.sp, fontWeight = FontWeight.Bold, color = AppColors.PrimaryActionTeal)
+                            }
+                            Column {
+                                Text("Token Usage (In/Out)", fontSize = 10.5.sp, color = AppColors.NeutralGray)
+                                Text("${fbUser.apiTokenUsageIn} / ${fbUser.apiTokenUsageOut}", fontSize = 12.sp, fontWeight = FontWeight.SemiBold, color = AppColors.TextDark)
+                            }
+                            Column {
+                                Text("AVG Token / Req", fontSize = 10.5.sp, color = AppColors.NeutralGray)
+                                Text(String.format(Locale.US, "%.1f", fbUser.avgApiTokenUsage), fontSize = 12.5.sp, fontWeight = FontWeight.Bold, color = AppColors.PrimaryNavy)
+                            }
+                        }
                     }
                 }
             }
@@ -399,6 +552,55 @@ fun DashboardScreen(
                 }
             }
         }
+    }
+
+    if (showQuickSignInDialog) {
+        var quickEmail by remember { mutableStateOf("ishangecreation@gmail.com") }
+        var quickName by remember { mutableStateOf("Ishange Creation (Admin)") }
+
+        AlertDialog(
+            onDismissRequest = { showQuickSignInDialog = false },
+            title = { Text("Quick Sign-In (Firebase)", fontWeight = FontWeight.Bold) },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text(
+                        "Direct sign-in for testing admin control and Firestore synchronization without requiring Google Play Services on emulator:",
+                        fontSize = 12.sp,
+                        color = AppColors.NeutralGray,
+                    )
+                    OutlinedTextField(
+                        value = quickEmail,
+                        onValueChange = { quickEmail = it },
+                        label = { Text("Email") },
+                        modifier = Modifier.fillMaxWidth(),
+                        singleLine = true,
+                    )
+                    OutlinedTextField(
+                        value = quickName,
+                        onValueChange = { quickName = it },
+                        label = { Text("Display Name") },
+                        modifier = Modifier.fillMaxWidth(),
+                        singleLine = true,
+                    )
+                }
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        onManualSignIn(quickEmail, quickName)
+                        showQuickSignInDialog = false
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = AppColors.PrimaryNavy),
+                ) {
+                    Text("Sign In")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showQuickSignInDialog = false }) {
+                    Text("Cancel")
+                }
+            },
+        )
     }
 }
 

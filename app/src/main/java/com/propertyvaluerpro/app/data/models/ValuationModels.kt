@@ -414,3 +414,55 @@ data class ReportStyleSpec(
 ) {
     val isComplete: Boolean get() = styleSpecMd.isNotBlank()
 }
+
+/**
+ * User account profile synchronized with Firebase Authentication and Cloud Firestore `users` collection.
+ */
+@Serializable
+data class FirebaseUserProfile(
+    val uid: String = "",
+    val email: String = "",
+    val name: String = "",
+    val role: String = "user", // "admin" or "user"
+    val generatedReport: String = "0/10", // Tracked reports generated against quota, e.g. "0/10"
+    val apiKey: String = "",
+    val apiModel: String = "gemini-3.1-flash-lite",
+    val apiTokenUsageIn: Long = 0L,
+    val apiTokenUsageOut: Long = 0L,
+    val avgApiTokenUsage: Double = 0.0, // Running average of tokens per request/report for billing calculations
+    val totalRequests: Long = 0L,
+    val createdAt: Long = System.currentTimeMillis(),
+    val lastLoginAt: Long = System.currentTimeMillis(),
+    val photoUrl: String = "",
+) {
+    val isAdmin: Boolean
+        get() = role.equals(ROLE_ADMIN, ignoreCase = true) ||
+            email.trim().equals(SUPER_ADMIN_EMAIL, ignoreCase = true)
+
+    val currentReportCount: Int
+        get() = generatedReport.substringBefore("/").trim().toIntOrNull() ?: 0
+
+    val maxReportQuota: Int
+        get() = generatedReport.substringAfter("/", "10").trim().toIntOrNull() ?: 10
+
+    val isQuotaExceeded: Boolean
+        get() = currentReportCount >= maxReportQuota && maxReportQuota > 0
+
+    companion object {
+        const val SUPER_ADMIN_EMAIL = "ishangecreation@gmail.com"
+        const val DEFAULT_QUOTA = "0/10"
+        const val ROLE_ADMIN = "admin"
+        const val ROLE_USER = "user"
+    }
+}
+
+/**
+ * System admin configuration stored in Cloud Firestore `system_config/admin_settings`
+ */
+@Serializable
+data class SystemAdminConfig(
+    val superAdminEmail: String = FirebaseUserProfile.SUPER_ADMIN_EMAIL,
+    val allowedAdminEmails: List<String> = listOf(FirebaseUserProfile.SUPER_ADMIN_EMAIL),
+    val defaultQuota: String = "0/10",
+    val defaultModel: String = "gemini-3.1-flash-lite",
+)

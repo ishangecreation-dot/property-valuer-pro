@@ -47,6 +47,8 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.SwitchDefaults
+import androidx.compose.material3.Tab
+import androidx.compose.material3.TabRow
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -85,7 +87,10 @@ fun AdminSettingsDialog(
     val scope = rememberCoroutineScope()
     val clipboard = LocalClipboardManager.current
 
-    var isAuthenticated by remember { mutableStateOf(false) }
+    val currentFbUser = viewModel.uiState.value.firebaseUser
+    val isAutoAdmin = currentFbUser?.isAdmin == true
+    var isAuthenticated by remember { mutableStateOf(isAutoAdmin) }
+    var selectedAdminTab by remember { mutableStateOf(0) }
     var password by remember { mutableStateOf("") }
     var obscurePassword by remember { mutableStateOf(true) }
     var showAccessDenied by remember { mutableStateOf(false) }
@@ -233,7 +238,31 @@ fun AdminSettingsDialog(
                         }
                     }
                 } else {
-                    Text("Enter Your Gemini API Key", fontFamily = ManropeFontFamily, fontSize = 15.sp, fontWeight = FontWeight.Bold, color = AppColors.PrimaryNavy)
+                    TabRow(
+                        selectedTabIndex = selectedAdminTab,
+                        containerColor = Color(0xFFF1F5F9),
+                        contentColor = AppColors.PrimaryNavy,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(8.dp))
+                            .padding(bottom = 14.dp),
+                    ) {
+                        Tab(
+                            selected = selectedAdminTab == 0,
+                            onClick = { selectedAdminTab = 0 },
+                            text = { Text("AI & System", fontWeight = FontWeight.Bold, fontSize = 12.5.sp) },
+                        )
+                        Tab(
+                            selected = selectedAdminTab == 1,
+                            onClick = { selectedAdminTab = 1 },
+                            text = { Text("Firestore Users & Billing", fontWeight = FontWeight.Bold, fontSize = 12.5.sp) },
+                        )
+                    }
+
+                    if (selectedAdminTab == 1) {
+                        AdminUserManagementView(viewModel = viewModel)
+                    } else {
+                        Text("Enter Your Gemini API Key", fontFamily = ManropeFontFamily, fontSize = 15.sp, fontWeight = FontWeight.Bold, color = AppColors.PrimaryNavy)
                     Spacer(Modifier.height(4.dp))
                     Text("Paste your Gemini API key below to enable AI document extraction.", fontSize = 12.5.sp, color = AppColors.SecondaryText)
                     Spacer(Modifier.height(10.dp))
@@ -492,6 +521,7 @@ fun AdminSettingsDialog(
                             viewModel.repository.setScreens3To10Frozen(it)
                         },
                     )
+                    }
 
                     Spacer(Modifier.height(8.dp))
                     Text("${AppConstants.APP_NAME} v${AppConstants.APP_VERSION}", fontSize = 11.sp, color = AppColors.SecondaryText)

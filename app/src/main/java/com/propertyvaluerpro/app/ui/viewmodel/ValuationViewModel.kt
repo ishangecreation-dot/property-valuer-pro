@@ -7,6 +7,7 @@ import com.propertyvaluerpro.app.data.models.AppConstants
 import com.propertyvaluerpro.app.data.models.BuildingDetails
 import com.propertyvaluerpro.app.data.models.BuildingSketch
 import com.propertyvaluerpro.app.data.models.DeedData
+import com.propertyvaluerpro.app.data.models.FirebaseUserProfile
 import com.propertyvaluerpro.app.data.models.InspectionData
 import com.propertyvaluerpro.app.data.models.LocationData
 import com.propertyvaluerpro.app.data.models.MonthlyUsageState
@@ -18,8 +19,10 @@ import com.propertyvaluerpro.app.data.services.AiService
 import com.propertyvaluerpro.app.data.services.ConnectionTestResult
 import com.propertyvaluerpro.app.data.services.DocxService
 import com.propertyvaluerpro.app.data.services.DossierMarkdownService
+import com.propertyvaluerpro.app.data.services.FirebaseService
 import com.propertyvaluerpro.app.data.storage.SecureStorage
 import com.propertyvaluerpro.app.data.storage.ValuationRepository
+import com.google.android.gms.auth.api.signin.GoogleSignInAccount
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -46,6 +49,11 @@ data class AppUiState(
     val generationProgress: String = "",
     val snackbarMessage: String? = null,
     val snackbarIsError: Boolean = false,
+    val firebaseUser: FirebaseUserProfile? = null,
+    val allUsers: List<FirebaseUserProfile> = emptyList(),
+    val allowedAdminEmails: List<String> = listOf(FirebaseUserProfile.SUPER_ADMIN_EMAIL),
+    val isUserManagementLoading: Boolean = false,
+    val isGoogleSigningIn: Boolean = false,
 )
 
 class ValuationViewModel(application: Application) : AndroidViewModel(application) {
@@ -53,12 +61,49 @@ class ValuationViewModel(application: Application) : AndroidViewModel(applicatio
     val secureStorage = SecureStorage(appContext)
     val repository = ValuationRepository(appContext)
     val aiService = AiService(appContext, secureStorage)
+    val firebaseService = FirebaseService(appContext)
 
     private val _uiState = MutableStateFlow(AppUiState())
     val uiState: StateFlow<AppUiState> = _uiState.asStateFlow()
 
     init {
         refreshAll()
+
+        // Real-time API token tracker connected to Cloud Firestore for billing
+        aiService.onTokenUsageRecorded = { inTokens, outTokens ->
+            val uid = _uiState.value.firebaseUser?.uid
+            if (!uid.isNullOrBlank()) {
+                viewModelScope.launch {
+                    firebaseService.recordTokenUsage(uid, inTokens, outTokens)
+                    firebaseService.getUserProfile(uid)?.let { updated ->
+                        _uiState.update { it.copy(firebaseUser = updated) }
+                    }
+                }
+            }
+        }
+
+        // Real-time Firebase Auth state observer
+        viewModelScope.launch {
+            firebaseService.authStateFlow.collect { fbUser ->
+                if (fbUser != null) {
+                    val userProfile = firebaseService.syncUserOnLogin(
+                        uid = fbUser.uid,
+                        email = fbUser.email.orEmpty(),
+                        displayName = fbUser.displayName.orEmpty(),
+                        photoUrl = fbUser.photoUrl?.toString().orEmpty(),
+                    )
+                    _uiState.update { it.copy(firebaseUser = userProfile) }
+                    if (userProfile.apiKey.isNotBlank()) {
+                        secureStorage.setAiApiKey(userProfile.apiKey)
+                    }
+                    if (userProfile.apiModel.isNotBlank()) {
+                        secureStorage.setAiProvider(userProfile.apiModel)
+                    }
+                } else {
+                    _uiState.update { it.copy(firebaseUser = null) }
+                }
+            }
+        }
     }
 
     fun refreshAll() {
@@ -476,6 +521,19 @@ class ValuationViewModel(application: Application) : AndroidViewModel(applicatio
                     status = AppConstants.STATUS_COMPLETED,
                 )
                 persistProject(completed)
+
+                // Increment user's generatedReport counter in Cloud Firestore
+                val uid = _uiState.value.firebaseUser?.uid
+                if (!uid.isNullOrBlank()) {
+                    viewModelScope.launch {
+                        firebaseService.incrementGeneratedReport(uid).onSuccess { nextQuota ->
+                            _uiState.update { s ->
+                                s.copy(firebaseUser = s.firebaseUser?.copy(generatedReport = nextQuota))
+                            }
+                        }
+                    }
+                }
+
                 _uiState.update {
                     it.copy(
                         isGeneratingDocx = false,
@@ -488,6 +546,144 @@ class ValuationViewModel(application: Application) : AndroidViewModel(applicatio
                 _uiState.update { it.copy(isGeneratingDocx = false, generationProgress = "") }
                 showMessage("Error generating report: ${err.message}", isError = true)
             }
+        }
+    }
+
+    // ==========================================
+    // Firebase Authentication & User Management
+    // ==========================================
+
+    fun handleGoogleSignIn(account: GoogleSignInAccount) {
+        viewModelScope.launch {
+            _uiState.update { it.copy(isGoogleSigningIn = true) }
+            firebaseService.signInWithGoogle(account)
+                .onSuccess { userProfile ->
+                    _uiState.update { it.copy(firebaseUser = userProfile, isGoogleSigningIn = false) }
+                    if (userProfile.apiKey.isNotBlank()) secureStorage.setAiApiKey(userProfile.apiKey)
+                    if (userProfile.apiModel.isNotBlank()) secureStorage.setAiProvider(userProfile.apiModel)
+                    showMessage("Signed in successfully as ${userProfile.name} (${userProfile.role.uppercase()})")
+                }
+                .onFailure { error ->
+                    _uiState.update { it.copy(isGoogleSigningIn = false) }
+                    showMessage(error.message ?: "Google Sign-In failed.", isError = true)
+                }
+        }
+    }
+
+    fun manualSignIn(email: String, displayName: String) {
+        viewModelScope.launch {
+            _uiState.update { it.copy(isGoogleSigningIn = true) }
+            firebaseService.manualSignIn(email, displayName)
+                .onSuccess { userProfile ->
+                    _uiState.update { it.copy(firebaseUser = userProfile, isGoogleSigningIn = false) }
+                    if (userProfile.apiKey.isNotBlank()) secureStorage.setAiApiKey(userProfile.apiKey)
+                    if (userProfile.apiModel.isNotBlank()) secureStorage.setAiProvider(userProfile.apiModel)
+                    showMessage("Signed in as ${userProfile.name} (${userProfile.role.uppercase()})")
+                }
+                .onFailure { error ->
+                    _uiState.update { it.copy(isGoogleSigningIn = false) }
+                    showMessage(error.message ?: "Sign-in failed.", isError = true)
+                }
+        }
+    }
+
+    fun signOut() {
+        firebaseService.signOut()
+        _uiState.update { it.copy(firebaseUser = null) }
+        showMessage("Signed out successfully.")
+    }
+
+    fun loadAllUsers() {
+        viewModelScope.launch {
+            _uiState.update { it.copy(isUserManagementLoading = true) }
+            firebaseService.fetchAllUsers()
+                .onSuccess { users ->
+                    val allowed = firebaseService.fetchAllowedAdminEmails()
+                    _uiState.update { it.copy(allUsers = users, allowedAdminEmails = allowed, isUserManagementLoading = false) }
+                }
+                .onFailure { error ->
+                    _uiState.update { it.copy(isUserManagementLoading = false) }
+                    showMessage(error.message ?: "Failed to fetch users from Firestore.", isError = true)
+                }
+        }
+    }
+
+    fun addUser(user: FirebaseUserProfile, onSuccess: () -> Unit = {}) {
+        viewModelScope.launch {
+            firebaseService.addUserDocument(user)
+                .onSuccess {
+                    loadAllUsers()
+                    showMessage("User '${user.name}' created in Firestore.")
+                    onSuccess()
+                }
+                .onFailure { error ->
+                    showMessage(error.message ?: "Failed to add user.", isError = true)
+                }
+        }
+    }
+
+    fun updateUser(user: FirebaseUserProfile, onSuccess: () -> Unit = {}) {
+        viewModelScope.launch {
+            firebaseService.updateUserDocument(user)
+                .onSuccess {
+                    loadAllUsers()
+                    if (_uiState.value.firebaseUser?.uid == user.uid) {
+                        _uiState.update { it.copy(firebaseUser = user) }
+                    }
+                    showMessage("User '${user.name}' updated in Firestore.")
+                    onSuccess()
+                }
+                .onFailure { error ->
+                    showMessage(error.message ?: "Failed to update user.", isError = true)
+                }
+        }
+    }
+
+    fun deleteUser(uid: String, onSuccess: () -> Unit = {}) {
+        viewModelScope.launch {
+            firebaseService.deleteUserDocument(uid)
+                .onSuccess {
+                    loadAllUsers()
+                    showMessage("User deleted from Firestore.")
+                    onSuccess()
+                }
+                .onFailure { error ->
+                    showMessage(error.message ?: "Failed to delete user.", isError = true)
+                }
+        }
+    }
+
+    fun addAllowedAdminEmail(email: String, onSuccess: () -> Unit = {}) {
+        viewModelScope.launch {
+            firebaseService.addAllowedAdminEmail(email)
+                .onSuccess {
+                    val allowed = firebaseService.fetchAllowedAdminEmails()
+                    loadAllUsers()
+                    _uiState.update { it.copy(allowedAdminEmails = allowed) }
+                    showMessage("Added '$email' to allowed admins.")
+                    onSuccess()
+                }
+                .onFailure { error ->
+                    showMessage(error.message ?: "Failed to add admin email.", isError = true)
+                }
+        }
+    }
+
+    fun removeAllowedAdminEmail(email: String, onSuccess: () -> Unit = {}) {
+        viewModelScope.launch {
+            firebaseService.removeAllowedAdminEmail(email)
+                .onSuccess {
+                    val allowed = firebaseService.fetchAllowedAdminEmails()
+                    loadAllUsers()
+                    _uiState.update { it.copy(allowedAdminEmails = allowed) }
+                    showMessage("Removed '$email' from allowed admins.")
+                    onSuccess()
+                }
+                .onFailure { error ->
+                    showMessage(error.message ?: "Failed to remove admin email.", isError = true)
+                }
+        }
+    }
         }
     }
 

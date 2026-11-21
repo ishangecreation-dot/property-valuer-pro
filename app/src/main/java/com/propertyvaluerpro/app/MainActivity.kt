@@ -4,6 +4,10 @@ import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import com.google.android.gms.auth.api.signin.GoogleSignIn
+import com.google.android.gms.common.api.ApiException
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -64,6 +68,20 @@ private fun PropertyValuerProApp(
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     val navController = rememberNavController()
 
+    val googleSignInLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.StartActivityForResult(),
+    ) { result ->
+        val task = GoogleSignIn.getSignedInAccountFromIntent(result.data)
+        try {
+            val account = task.getResult(ApiException::class.java)
+            if (account != null) {
+                viewModel.handleGoogleSignIn(account)
+            }
+        } catch (e: ApiException) {
+            viewModel.showMessage("Google Sign-In: ${e.message ?: "Failed"}", isError = true)
+        }
+    }
+
     fun navigateToStep(step: Int) {
         if (uiState.screens3To10Frozen && step >= 4) {
             viewModel.showMessage("Step $step is currently frozen. Only Screens 0 to 2 are active.")
@@ -110,6 +128,12 @@ private fun PropertyValuerProApp(
                 onOpenSettings = viewModel::openAdminSettings,
                 onOpenLimitDialog = viewModel::openLimitDialog,
                 onSnackbarDismissed = viewModel::clearSnackbar,
+                onGoogleSignIn = {
+                    val client = viewModel.firebaseService.getGoogleSignInClient()
+                    googleSignInLauncher.launch(client.signInIntent)
+                },
+                onManualSignIn = viewModel::manualSignIn,
+                onSignOut = viewModel::signOut,
             )
         }
 
