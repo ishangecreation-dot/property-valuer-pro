@@ -34,6 +34,7 @@ class FirebaseService(private val context: Context) {
         const val CONFIG_COLLECTION = "system_config"
         const val ADMIN_CONFIG_DOC = "admin_settings"
         const val SUPER_ADMIN_EMAIL = FirebaseUserProfile.SUPER_ADMIN_EMAIL
+        const val DEFAULT_WEB_CLIENT_ID = "633689067664-9j8091i59vugq35uqv66t10u3v9n5eap.apps.googleusercontent.com"
     }
 
     private val auth: FirebaseAuth? by lazy {
@@ -77,12 +78,12 @@ class FirebaseService(private val context: Context) {
      * Configure Google Sign-In Client.
      * @param serverClientId Optional Web Client ID from Firebase console for ID Token verification.
      */
-    fun getGoogleSignInClient(serverClientId: String? = null): GoogleSignInClient {
+    fun getGoogleSignInClient(serverClientId: String? = DEFAULT_WEB_CLIENT_ID): GoogleSignInClient {
         val gsoBuilder = GoogleSignInOptions.Builder(GoogleSignInOptions.DEFAULT_SIGN_IN)
             .requestEmail()
             .requestProfile()
 
-        val trimmedClientId = serverClientId?.trim() ?: ""
+        val trimmedClientId = (serverClientId ?: DEFAULT_WEB_CLIENT_ID).trim()
         if (trimmedClientId.isNotEmpty()) {
             gsoBuilder.requestIdToken(trimmedClientId)
         }

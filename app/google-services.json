@@ -1,31 +1,36 @@
 {
   "project_info": {
-    "project_number": "108342918451",
-    "project_id": "property-valuer-pro",
-    "storage_bucket": "property-valuer-pro.appspot.com"
+    "project_number": "633689067664",
+    "project_id": "property-valuer-pro-6c671",
+    "storage_bucket": "property-valuer-pro-6c671.firebasestorage.app"
   },
   "client": [
     {
       "client_info": {
-        "mobilesdk_app_id": "1:108342918451:android:3e0d8b74c0b2f518e3fa01",
+        "mobilesdk_app_id": "1:633689067664:android:43a4ee48907fdac5dc4815",
         "android_client_info": {
           "package_name": "com.propertyvaluerpro.app"
         }
       },
       "oauth_client": [
         {
-          "client_id": "108342918451-o7e305e5d3k64gq5u03l908m7e1vptb2.apps.googleusercontent.com",
+          "client_id": "633689067664-9j8091i59vugq35uqv66t10u3v9n5eap.apps.googleusercontent.com",
           "client_type": 3
         }
       ],
       "api_key": [
         {
-          "current_key": "AIzaSyD_DummyPropertyValuerProKeyReplaceWithConsoleKey"
+          "current_key": "AIzaSyDhwZb1kJOF-AMjmoMjLLF7AzfD93SE93o"
         }
       ],
       "services": {
         "appinvite_service": {
-          "other_platform_oauth_client": []
+          "other_platform_oauth_client": [
+            {
+              "client_id": "633689067664-9j8091i59vugq35uqv66t10u3v9n5eap.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
         }
       }
     }
