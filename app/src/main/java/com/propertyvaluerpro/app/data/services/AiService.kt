@@ -373,7 +373,7 @@ class AiService(
         if (nonEmpty.isEmpty()) return@withContext ReportAnalysisResult("", "", "", "", "", "", "", "")
 
         val names = nonEmpty.map { it.second.substringAfterLast('/').substringAfterLast('\\') }
-        val defaultSpec = buildDefaultStyleSpec(names)
+        val defaultSpec = buildDefaultStyleSpec(names.joinToString(", "))
 
         val apiKey = secureStorage.getAiApiKey()
         if (apiKey.isEmpty()) {
@@ -399,7 +399,7 @@ class AiService(
                 attachedNames.add(path.substringAfterLast('/').substringAfterLast('\\'))
             }
         }
-        if (parts.isEmpty()) {
+        if (parts.length() == 0) {
             return@withContext ReportAnalysisResult(
                 reportFormat = "Chartered 10-Point Schedule & Executive Appraisal Table",
                 reportStyle = "Formal Chartered Practitioner Terminology & LKR Rounding",
