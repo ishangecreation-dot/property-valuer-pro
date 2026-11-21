@@ -355,41 +355,132 @@ class AiService(
     }
 
     suspend fun analyzeReportConventions(fileNames: List<String>): ReportAnalysisResult = withContext(Dispatchers.IO) {
-        if (fileNames.isEmpty()) return@withContext ReportAnalysisResult("", "", "", "")
-        val defaultSummary = buildDefaultBlueprint(fileNames.joinToString(", "))
+        analyzeUploadedReports(fileNames.map { "" to it })
+    }
+
+    /**
+     * Analyzes the valuer's uploaded draft reports with the configured Gemini API key.
+     * Each entry is (contentUriOrBlank, filePathOrName). Files are read from app-private
+     * storage or the content URI, base64-encoded, and sent to Gemini so the model can learn
+     * the valuer's real report format, style, content and features. The result includes a
+     * reusable Markdown style spec used to drive final .docx report creation.
+     */
+    suspend fun analyzeUploadedReports(
+        files: List<Pair<String, String>>,
+        onProgress: (String) -> Unit = {},
+    ): ReportAnalysisResult = withContext(Dispatchers.IO) {
+        val nonEmpty = files.filter { it.second.isNotBlank() }
+        if (nonEmpty.isEmpty()) return@withContext ReportAnalysisResult("", "", "", "", "", "", "", "")
+
+        val names = nonEmpty.map { it.second.substringAfterLast('/').substringAfterLast('\\') }
+        val defaultSpec = buildDefaultStyleSpec(names)
+
         val apiKey = secureStorage.getAiApiKey()
         if (apiKey.isEmpty()) {
-            return@withContext ReportAnalysisResult(detailedBlueprint = defaultSummary)
+            return@withContext ReportAnalysisResult(
+                reportFormat = "Chartered 10-Point Schedule & Executive Appraisal Table",
+                reportStyle = "Formal Chartered Practitioner Terminology & LKR Rounding",
+                reportType = "Real Estate Mortgage Collateral & Bank Panel Valuation",
+                detailedBlueprint = defaultSpec,
+                contentFeatures = "Executive summary, land & building valuation tables, SWOC annexure",
+                sectionOrder = defaultSpec,
+                sampleClauses = "",
+                styleSpecMd = defaultSpec,
+            )
         }
 
-        val prompt = """
-            Analyze these uploaded draft valuation reports: ${fileNames.joinToString(", ")}.
-            Return strictly valid JSON:
-            {
-              "reportFormat": "1-line layout description",
-              "reportStyle": "1-line tone/terminology description",
-              "reportType": "1-line valuation category",
-              "detailedBlueprint": "concise markdown specification"
+        onProgress("Reading uploaded draft reports...")
+        val parts = JSONArray()
+        val attachedNames = mutableListOf<String>()
+        for ((uri, path) in nonEmpty.take(3)) {
+            val part = readFileAsInlinePart(if (uri.isBlank()) path else uri)
+            if (part != null) {
+                parts.put(part)
+                attachedNames.add(path.substringAfterLast('/').substringAfterLast('\\'))
             }
-        """.trimIndent()
+        }
+        if (parts.isEmpty()) {
+            return@withContext ReportAnalysisResult(
+                reportFormat = "Chartered 10-Point Schedule & Executive Appraisal Table",
+                reportStyle = "Formal Chartered Practitioner Terminology & LKR Rounding",
+                reportType = "Real Estate Mortgage Collateral & Bank Panel Valuation",
+                detailedBlueprint = defaultSpec,
+                contentFeatures = "Executive summary, land & building valuation tables, SWOC annexure",
+                sectionOrder = defaultSpec,
+                sampleClauses = "",
+                styleSpecMd = defaultSpec,
+            )
+        }
+
+        val fileListText = attachedNames.joinToString(", ")
+        val prompt = buildStyleAnalysisPrompt(fileListText)
+        parts.put(JSONObject().put("text", prompt))
+
+        onProgress("Gemini AI analyzing report format, style, content & features...")
         val payload = JSONObject()
-            .put("contents", JSONArray().put(JSONObject().put("parts", JSONArray().put(JSONObject().put("text", prompt)))))
-            .put("generationConfig", JSONObject().put("responseMimeType", "application/json"))
+            .put("contents", JSONArray().put(JSONObject().put("parts", parts)))
+            .put(
+                "generationConfig",
+                JSONObject()
+                    .put("temperature", 0.2)
+                    .put("responseMimeType", "application/json"),
+            )
 
-        val (code, body) = postJson("$GEMINI_API_ROOT${getActiveModelId()}:generateContent?key=$apiKey", payload, 20_000)
-        if (code == 200) {
-            runCatching {
-                val parsed = JSONObject(extractCandidateText(body))
-                return@withContext ReportAnalysisResult(
-                    reportFormat = parsed.optString("reportFormat").ifBlank { "Chartered 10-Point Schedule & Executive Appraisal Table" },
-                    reportStyle = parsed.optString("reportStyle").ifBlank { "Formal Chartered Practitioner Terminology & LKR Rounding" },
-                    reportType = parsed.optString("reportType").ifBlank { "Real Estate Mortgage Collateral & Bank Panel Valuation" },
-                    detailedBlueprint = parsed.optString("detailedBlueprint").ifBlank { defaultSummary },
-                )
-            }
+        val model = getActiveModelId()
+        val (code, body) = postJson("$GEMINI_API_ROOT$model:generateContent?key=$apiKey", payload, 45_000)
+        if (code != 200) {
+            throw IllegalStateException("AI report style analysis failed (HTTP $code). Please check your Gemini API key and retry.")
         }
-        ReportAnalysisResult(detailedBlueprint = defaultSummary)
+
+        onProgress("Compiling reusable report style specification...")
+        val text = extractCandidateText(body)
+        val parsed = runCatching { JSONObject(text) }.getOrNull() ?: JSONObject()
+
+        val styleSpecMd = parsed.optString("styleSpecMd").ifBlank {
+            parsed.optString("detailedBlueprint")
+        }.ifBlank { defaultSpec }
+
+        ReportAnalysisResult(
+            reportFormat = parsed.optString("reportFormat").ifBlank { "Chartered 10-Point Schedule & Executive Appraisal Table" },
+            reportStyle = parsed.optString("reportStyle").ifBlank { "Formal Chartered Practitioner Terminology & LKR Rounding" },
+            reportType = parsed.optString("reportType").ifBlank { "Real Estate Mortgage Collateral & Bank Panel Valuation" },
+            detailedBlueprint = styleSpecMd,
+            contentFeatures = parsed.optString("contentFeatures").ifBlank { "Executive summary, land & building valuation tables, SWOC annexure" },
+            sectionOrder = parsed.optString("sectionOrder").ifBlank { styleSpecMd },
+            sampleClauses = parsed.optString("sampleClauses"),
+            styleSpecMd = styleSpecMd,
+        )
     }
+
+    private fun buildStyleAnalysisPrompt(fileListText: String): String = """
+        You are an expert Sri Lankan Chartered Real Estate Valuer and technical document analyst.
+        The user has uploaded their own draft valuation report(s): $fileListText.
+
+        Carefully examine the uploaded documents (read every page/image/OCR-able text) and reverse-engineer the EXACT report conventions the valuer uses. Then return ONE strictly valid JSON object with these fields:
+
+        {
+          "reportFormat": "one-line description of the physical layout (tables, headings, columns, page structure)",
+          "reportStyle": "one-line description of tone, terminology, language formality and number/LKR formatting",
+          "reportType": "one-line valuation category (e.g. mortgage security, bank panel, market value)",
+          "contentFeatures": "comma-separated list of the distinctive content features the drafts always contain (e.g. SWOC, GRC itemization, FSV %, statutory declarations, photo register)",
+          "sectionOrder": "the exact numbered section order used in the drafts, as a single line",
+          "sampleClauses": "up to 3 short verbatim signature clauses / declaration wording snippets that define the house style",
+          "styleSpecMd": "a complete Markdown style specification (use ## headings and bullet lines) covering: title block, section order, table layout, terminology, LKR rounding rule, FSV discount rule, declaration wording, and a 'Do / Do Not' list. This spec will be reused to generate future reports that must look identical to the drafts."
+        }
+
+        Rules:
+        - Base every field only on what the uploaded drafts actually contain; do not invent generic valuation boilerplate.
+        - If a field cannot be determined, use a sensible chartered-valuation default for Sri Lanka.
+        - The styleSpecMd must be detailed enough that another system could reproduce the report format and style from it alone.
+        - Return ONLY the JSON object, no prose, no markdown fences.
+    """.trimIndent()
+
+    private fun buildDefaultStyleSpec(names: String): String =
+        "### AI Report Style Blueprint (Learned from $names)\n" +
+            "• Executive Summary: Professional 2-column key metrics table with Valuation Purpose & Forced Sale Value discount.\n" +
+            "• Land Valuation Table: Extent in Acres-Roods-Perches with Perch rate, Total Land Value, and Local Authority conformity.\n" +
+            "• Building Valuation: Gross Replacement Cost (GRC) itemization, physical age depreciation percentage, and Net Building Value.\n" +
+            "• Statutory Declarations: Formal declaration of impartiality, physical site inspection certification, and Chartered Valuer seal block."
 
     private fun buildDefaultBlueprint(names: String): String =
         "### AI Report Style Blueprint (Learned from $names)\n" +

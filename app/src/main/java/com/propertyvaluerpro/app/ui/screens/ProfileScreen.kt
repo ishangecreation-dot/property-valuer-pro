@@ -1,7 +1,6 @@
 package com.propertyvaluerpro.app.ui.screens
 
 import android.net.Uri
-import android.provider.OpenableColumns
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.BorderStroke
@@ -84,7 +83,7 @@ fun ProfileScreen(
     onSaveProfile: (ValuerProfile, Boolean) -> Boolean,
     onSwitchDraft: (ValuerProfile) -> Unit,
     onCreateDraft: () -> Unit,
-    onUploadTemplates: (List<String>) -> Unit,
+    onUploadTemplates: (List<Uri>) -> Unit,
     onRemoveTemplate: (Int) -> Unit,
     onClearTemplates: () -> Unit,
     buildDossierMarkdown: () -> String,
@@ -110,6 +109,7 @@ fun ProfileScreen(
 
     var showGuideSheet by remember { mutableStateOf(false) }
     var showDossierSheet by remember { mutableStateOf(false) }
+    var showStyleSpecSheet by remember { mutableStateOf(false) }
     var draftMenuExpanded by remember { mutableStateOf(false) }
 
     LaunchedEffect(p) {
@@ -142,8 +142,7 @@ fun ProfileScreen(
         contract = ActivityResultContracts.OpenMultipleDocuments(),
     ) { uris: List<Uri> ->
         if (uris.isNotEmpty()) {
-            val names = uris.map { uri -> resolveDisplayName(context, uri) }
-            onUploadTemplates(names)
+            onUploadTemplates(uris)
         }
     }
 
@@ -152,6 +151,13 @@ fun ProfileScreen(
     }
     if (showDossierSheet) {
         DossierPreviewSheet(markdown = buildDossierMarkdown(), onDismiss = { showDossierSheet = false })
+    }
+    if (showStyleSpecSheet) {
+        DossierPreviewSheet(
+            markdown = p.reportStyleSpecMd.ifBlank { defaultStyleSpecFallback() },
+            title = "Learned Report Style Spec (.md)",
+            onDismiss = { showStyleSpecSheet = false },
+        )
     }
 
     ResponsiveWorkflowScaffold(
@@ -485,6 +491,7 @@ fun ProfileScreen(
                                 "application/pdf",
                                 "application/msword",
                                 "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                                "image/*",
                             ),
                         )
                     },
@@ -493,19 +500,42 @@ fun ProfileScreen(
                 ) {
                     Icon(Icons.Default.UploadFile, contentDescription = null, modifier = Modifier.size(18.dp))
                     Spacer(Modifier.width(8.dp))
-                    Text("Upload Draft Reports (DOCX / PDF)", fontWeight = FontWeight.SemiBold)
+                    Text("Upload Draft Reports (DOCX / PDF / Images)", fontWeight = FontWeight.SemiBold)
+                }
+
+                if (p.reportStyleSpecMd.isNotBlank()) {
+                    Spacer(Modifier.height(8.dp))
+                    OutlinedButton(
+                        onClick = { showStyleSpecSheet = true },
+                        modifier = Modifier.fillMaxWidth().height(42.dp),
+                        shape = RoundedCornerShape(8.dp),
+                        border = BorderStroke(1.5.dp, AppColors.PrimaryActionTeal),
+                    ) {
+                        Icon(Icons.Default.MenuBook, contentDescription = null, tint = AppColors.PrimaryActionTeal, modifier = Modifier.size(16.dp))
+                        Spacer(Modifier.width(6.dp))
+                        Text("View Learned Report Style Spec (.md)", fontWeight = FontWeight.SemiBold, color = AppColors.PrimaryActionTeal)
+                    }
+                } else {
+                    Spacer(Modifier.height(8.dp))
+                    OutlinedButton(
+                        onClick = { onCreateDraft() },
+                        modifier = Modifier.fillMaxWidth().height(42.dp),
+                        shape = RoundedCornerShape(8.dp),
+                        border = BorderStroke(1.5.dp, AppColors.PrimaryActionTeal),
+                    ) {
+                        Icon(Icons.Default.AddCircleOutline, contentDescription = null, tint = AppColors.PrimaryActionTeal, modifier = Modifier.size(18.dp))
+                        Spacer(Modifier.width(8.dp))
+                        Text("New Draft Profile", fontWeight = FontWeight.SemiBold, color = AppColors.PrimaryActionTeal)
+                    }
                 }
             }
         }
     }
 }
 
-private fun resolveDisplayName(context: android.content.Context, uri: Uri): String {
-    context.contentResolver.query(uri, arrayOf(OpenableColumns.DISPLAY_NAME), null, null, null)?.use { cursor ->
-        if (cursor.moveToFirst()) {
-            val idx = cursor.getColumnIndex(OpenableColumns.DISPLAY_NAME)
-            if (idx >= 0) return cursor.getString(idx)
-        }
-    }
-    return uri.lastPathSegment ?: "Draft_Report.pdf"
-}
+private fun defaultStyleSpecFallback(): String =
+    "### AI Report Style Blueprint\n" +
+        "• Executive Summary: Professional 2-column key metrics table with Valuation Purpose & Forced Sale Value discount.\n" +
+        "• Land Valuation Table: Extent in Acres-Roods-Perches with Perch rate, Total Land Value, and Local Authority conformity.\n" +
+        "• Building Valuation: Gross Replacement Cost (GRC) itemization, physical age depreciation percentage, and Net Building Value.\n" +
+        "• Statutory Declarations: Formal declaration of impartiality, physical site inspection certification, and Chartered Valuer seal block."

@@ -177,66 +177,159 @@ class ValuationViewModel(application: Application) : AndroidViewModel(applicatio
         showMessage("New profile draft created. Enter details and save.")
     }
 
-    fun addTemplateFiles(fileNames: List<String>) {
+    fun addTemplateFiles(uris: List<android.net.Uri>) {
         val current = _uiState.value.profile
         val isPaid = repository.isPaidTier()
         val maxAllowed = if (isPaid) 99 else AppConstants.FREE_TIER_TEMPLATE_LIMIT
-        val merged = current.uploadedTemplates.toMutableList()
-        var added = 0
-        for (name in fileNames) {
-            if (merged.size >= maxAllowed) break
-            if (!merged.contains(name)) {
-                merged.add(name)
-                added++
-            }
-        }
-        if (added == 0) {
-            showMessage("Template limit reached ($maxAllowed max) or already uploaded.", isError = true)
+
+        if (uris.isEmpty()) {
+            showMessage("No draft report files were selected.", isError = true)
             return
         }
-        val updated = current.copy(uploadedTemplates = merged)
+        if (current.uploadedTemplates.size >= maxAllowed) {
+            showMessage("Template limit reached ($maxAllowed max). Clear existing drafts first.", isError = true)
+            return
+        }
+
+        // Copy picked files into app-private storage so URI read permissions survive.
+        val saved = mutableListOf<Pair<String, String>>() // (contentUri, app-private path)
+        for (uri in uris.take(maxAllowed - current.uploadedTemplates.size)) {
+            runCatching {
+                val name = appContext.contentResolver.query(
+                    uri,
+                    arrayOf(android.provider.OpenableColumns.DISPLAY_NAME),
+                    null,
+                    null,
+                    null,
+                )?.use { c ->
+                    if (c.moveToFirst()) {
+                        val idx = c.getColumnIndex(android.provider.OpenableColumns.DISPLAY_NAME)
+                        if (idx >= 0) c.getString(idx) else null
+                    } else null
+                } ?: uri.lastPathSegment
+                val safeName = (name ?: "draft_report").take(80).replace(Regex("[^a-zA-Z0-9._-]"), "_")
+                val dir = java.io.File(appContext.filesDir, "templates").apply { mkdirs() }
+                val target = java.io.File(dir, "${System.currentTimeMillis()}_${safeName}")
+                appContext.contentResolver.openInputStream(uri)?.use { input ->
+                    target.outputStream().use { output -> input.copyTo(output) }
+                } ?: throw IllegalStateException("Could not read the selected file.")
+                saved.add(uri.toString() to target.absolutePath)
+            }.onFailure {
+                showMessage("Failed to import a draft report: ${it.message}", isError = true)
+            }
+        }
+
+        if (saved.isEmpty()) {
+            showMessage("No draft reports could be imported. Please try again.", isError = true)
+            return
+        }
+
+        val mergedNames = (current.uploadedTemplates + saved.map { it.second.substringAfterLast('/').substringAfterLast('\\') })
+            .distinct()
+            .take(maxAllowed)
+        val mergedPaths = (current.templateFilePaths + saved.map { it.second }).distinct().take(maxAllowed)
+
+        val updated = current.copy(uploadedTemplates = mergedNames, templateFilePaths = mergedPaths)
         repository.saveProfile(updated)
         _uiState.update { it.copy(profile = updated, isAnalyzingTemplates = true) }
 
         viewModelScope.launch {
-            val analysis = aiService.analyzeReportConventions(merged)
-            val analyzed = _uiState.value.profile.copy(
-                reportFormat = analysis.reportFormat,
-                reportStyle = analysis.reportStyle,
-                reportType = analysis.reportType,
-                reportStyleSummary = analysis.detailedBlueprint,
-            )
-            repository.saveProfile(analyzed)
-            DossierMarkdownService.persistDossierFile(appContext, analyzed, _uiState.value.activeProject)
-            _uiState.update { it.copy(profile = analyzed, isAnalyzingTemplates = false) }
-            showMessage("Uploaded $added draft report(s). Format, style & type analyzed.")
+            try {
+                val analysis = aiService.analyzeUploadedReports(
+                    mergedPaths.map { "" to it },
+                ) { status ->
+                    _uiState.update { it.copy(extractionStatus = status) }
+                }
+                val analyzed = _uiState.value.profile.copy(
+                    reportFormat = analysis.reportFormat,
+                    reportStyle = analysis.reportStyle,
+                    reportType = analysis.reportType,
+                    reportStyleSummary = analysis.detailedBlueprint,
+                    reportContentFeatures = analysis.contentFeatures,
+                    reportSectionOrder = analysis.sectionOrder,
+                    reportSampleClauses = analysis.sampleClauses,
+                    reportStyleSpecMd = analysis.styleSpecMd,
+                )
+                repository.saveProfile(analyzed)
+                DossierMarkdownService.persistDossierFile(appContext, analyzed, _uiState.value.activeProject)
+                persistStyleSpecMd(analyzed.reportStyleSpecMd)
+                _uiState.update { it.copy(profile = analyzed, isAnalyzingTemplates = false, extractionStatus = "") }
+                showMessage("Uploaded ${saved.size} draft report(s). Format, style, content & features analyzed; style spec saved.")
+            } catch (e: Exception) {
+                _uiState.update { it.copy(isAnalyzingTemplates = false, extractionStatus = "") }
+                showMessage(e.message ?: "Report style analysis failed.", isError = true)
+            }
         }
     }
 
     fun removeTemplateAt(index: Int) {
         val current = _uiState.value.profile
         if (index !in current.uploadedTemplates.indices) return
-        val nextList = current.uploadedTemplates.toMutableList().apply { removeAt(index) }
-        val updated = if (nextList.isEmpty()) {
-            current.copy(uploadedTemplates = emptyList(), reportFormat = "", reportStyle = "", reportType = "", reportStyleSummary = "")
+        // Delete the backing app-private copy when present.
+        current.templateFilePaths.getOrNull(index)?.let { path ->
+            runCatching { java.io.File(path).delete() }
+        }
+        val nextNames = current.uploadedTemplates.toMutableList().apply { removeAt(index) }
+        val nextPaths = current.templateFilePaths.toMutableList().apply { if (index < size) removeAt(index) }
+        val updated = if (nextNames.isEmpty()) {
+            current.copy(
+                uploadedTemplates = emptyList(),
+                templateFilePaths = emptyList(),
+                reportFormat = "",
+                reportStyle = "",
+                reportType = "",
+                reportStyleSummary = "",
+                reportContentFeatures = "",
+                reportSectionOrder = "",
+                reportSampleClauses = "",
+                reportStyleSpecMd = "",
+            )
         } else {
-            current.copy(uploadedTemplates = nextList)
+            current.copy(uploadedTemplates = nextNames, templateFilePaths = nextPaths)
         }
         repository.saveProfile(updated)
+        if (updated.reportStyleSpecMd.isBlank()) persistStyleSpecMd("")
         _uiState.update { it.copy(profile = updated) }
     }
 
     fun clearAllTemplates() {
+        _uiState.value.profile.templateFilePaths.forEach { path ->
+            runCatching { java.io.File(path).delete() }
+        }
         val updated = _uiState.value.profile.copy(
             uploadedTemplates = emptyList(),
+            templateFilePaths = emptyList(),
             reportFormat = "",
             reportStyle = "",
             reportType = "",
             reportStyleSummary = "",
+            reportContentFeatures = "",
+            reportSectionOrder = "",
+            reportSampleClauses = "",
+            reportStyleSpecMd = "",
         )
         repository.saveProfile(updated)
+        persistStyleSpecMd("")
         _uiState.update { it.copy(profile = updated) }
         showMessage("All draft reports cleared.")
+    }
+
+    /** Persist the learned Markdown style spec to app storage for reuse by the .docx generator. */
+    fun persistStyleSpecMd(md: String) {
+        runCatching {
+            val file = java.io.File(appContext.filesDir, "REPORT_STYLE_SPEC.md")
+            if (md.isBlank()) file.delete() else file.writeText(md, Charsets.UTF_8)
+        }
+    }
+
+    /** Read back the persisted style spec (empty string when none saved). */
+    fun loadStyleSpecMd(): String = runCatching {
+        java.io.File(appContext.filesDir, "REPORT_STYLE_SPEC.md").readText(Charsets.UTF_8)
+    }.getOrDefault("")
+
+    /** Rebuild the active dossier .md so the style spec section stays in sync. */
+    fun refreshDossierFile() {
+        DossierMarkdownService.persistDossierFile(appContext, _uiState.value.profile, _uiState.value.activeProject)
     }
 
     fun updateDeedData(deedData: DeedData) {

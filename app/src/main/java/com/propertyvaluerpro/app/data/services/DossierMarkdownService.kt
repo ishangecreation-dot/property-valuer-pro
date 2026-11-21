@@ -46,6 +46,8 @@ object DossierMarkdownService {
                 appendLine("- **Report Format:** ${profile.reportFormat.ifBlank { "Chartered 10-Point Schedule" }}")
                 appendLine("- **Report Style:** ${profile.reportStyle.ifBlank { "Formal Chartered Terminology" }}")
                 appendLine("- **Report Type:** ${profile.reportType.ifBlank { "Real Estate Mortgage Collateral" }}")
+                if (profile.reportContentFeatures.isNotBlank()) appendLine("- **Content & Features:** ${profile.reportContentFeatures}")
+                if (profile.reportSectionOrder.isNotBlank()) appendLine("- **Section Order:** ${profile.reportSectionOrder}")
             } else {
                 appendLine("*No sample draft reports uploaded yet. Official chartered baseline format applied.*")
             }
@@ -94,6 +96,13 @@ object DossierMarkdownService {
                 appendLine("- **CERTIFIED MARKET VALUE (SAY):** ${CurrencyFormatter.formatLkr(say)}")
                 appendLine("- **FORCED SALE VALUE (${vd.fsvPercentage.toInt()}% FSV):** ${CurrencyFormatter.formatLkr(fsv)}")
                 appendLine("- **Collateral Rating:** ${vd.collateralRating}")
+            }
+            appendLine()
+            if (profile.reportStyleSpecMd.isNotBlank()) {
+                appendLine("## 7. Learned Report Style Specification (AI Draft Analysis)")
+                appendLine("The final issued report must reproduce the format, style, content and features below:")
+                appendLine()
+                appendLine(profile.reportStyleSpecMd.trim())
             }
         }
     }

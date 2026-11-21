@@ -54,14 +54,19 @@ data class ValuerProfile(
     val contactNumber2: String = "",
     val additionalContactDetails: String = "",
     val uploadedTemplates: List<String> = emptyList(),
+    val templateFilePaths: List<String> = emptyList(),
     val reportStyleSummary: String = "",
     val reportFormat: String = "",
     val reportStyle: String = "",
     val reportType: String = "",
+    val reportContentFeatures: String = "",
+    val reportSectionOrder: String = "",
+    val reportSampleClauses: String = "",
+    val reportStyleSpecMd: String = "",
     val lastModifiedEpochMs: Long = System.currentTimeMillis(),
 ) {
     val isDocumentAnalysisComplete: Boolean
-        get() = uploadedTemplates.isNotEmpty() && (reportFormat.isNotEmpty() || reportStyleSummary.isNotEmpty())
+        get() = uploadedTemplates.isNotEmpty() && (reportStyleSpecMd.isNotBlank() || reportFormat.isNotEmpty() || reportStyleSummary.isNotEmpty())
 
     val isConfigured: Boolean
         get() = valuerName.isNotBlank() &&
@@ -384,4 +389,28 @@ data class ReportAnalysisResult(
     val reportStyle: String = "Formal Chartered Practitioner Terminology & LKR Rounding",
     val reportType: String = "Real Estate Mortgage Collateral & Bank Panel Valuation",
     val detailedBlueprint: String = "",
+    val contentFeatures: String = "",
+    val sectionOrder: String = "",
+    val sampleClauses: String = "",
+    val styleSpecMd: String = "",
 )
+
+/**
+ * Complete Markdown style specification distilled from the valuer's uploaded draft
+ * reports. The final .docx generator consults this spec so the issued report's
+ * format, style, content and features mirror the drafts the valuer actually uses.
+ */
+@Serializable
+data class ReportStyleSpec(
+    val sourceFiles: List<String> = emptyList(),
+    val reportFormat: String = "",
+    val reportStyle: String = "",
+    val reportType: String = "",
+    val contentFeatures: String = "",
+    val sectionOrder: String = "",
+    val sampleClauses: String = "",
+    val doAndDont: String = "",
+    val styleSpecMd: String = "",
+) {
+    val isComplete: Boolean get() = styleSpecMd.isNotBlank()
+}

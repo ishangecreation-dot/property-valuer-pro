@@ -269,7 +269,11 @@ fun WorkflowGuideSheet(onDismiss: () -> Unit) {
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun DossierPreviewSheet(markdown: String, onDismiss: () -> Unit) {
+fun DossierPreviewSheet(
+    markdown: String,
+    onDismiss: () -> Unit,
+    title: String = "Dossier Preview",
+) {
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     ModalBottomSheet(onDismissRequest = onDismiss, sheetState = sheetState, containerColor = Color.White) {
         Column(modifier = Modifier.fillMaxWidth()) {
@@ -282,7 +286,7 @@ fun DossierPreviewSheet(markdown: String, onDismiss: () -> Unit) {
             ) {
                 Icon(Icons.Default.Description, contentDescription = null, tint = Color.White)
                 Spacer(Modifier.width(10.dp))
-                Text("Valuation Case Dossier (.md)", fontFamily = ManropeFontFamily, fontWeight = FontWeight.Bold, color = Color.White, fontSize = 15.5.sp, modifier = Modifier.weight(1f))
+                Text(title, fontFamily = ManropeFontFamily, fontWeight = FontWeight.Bold, color = Color.White, fontSize = 15.5.sp, modifier = Modifier.weight(1f))
                 IconButton(onClick = onDismiss) { Icon(Icons.Default.Close, contentDescription = "Close", tint = Color.White) }
             }
             SelectionContainer {

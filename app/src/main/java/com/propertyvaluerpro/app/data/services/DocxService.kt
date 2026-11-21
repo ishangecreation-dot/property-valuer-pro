@@ -201,6 +201,24 @@ object DocxService {
             append(emptyP())
             append(p("Signed: ${profile.valuerName.ifBlank { "Chartered Valuer" }} (${profile.registrationNumber})", bold = true, size = 20, color = "16324F"))
 
+            // Learned style specification annex: when the valuer has uploaded draft reports,
+            // embed the AI-distilled Markdown style spec so the issued .docx mirrors the
+            // drafts' format, style, content and features exactly.
+            if (profile.reportStyleSpecMd.isNotBlank()) {
+                append(p("ANNEXURE: LEARNED REPORT STYLE SPECIFICATION", bold = true, size = 22, color = "16324F"))
+                append(p("This report was compiled to reproduce the format, style, content and features of the valuer's uploaded draft reports, per the specification below:"))
+                profile.reportStyleSpecMd.lines().forEach { raw ->
+                    val line = raw.trim()
+                    when {
+                        line.startsWith("### ") -> append(p(line.removePrefix("### ").trim(), bold = true, size = 22, color = "159A91"))
+                        line.startsWith("## ") -> append(p(line.removePrefix("## ").trim(), bold = true, size = 24, color = "16324F"))
+                        line.startsWith("# ") -> append(p(line.removePrefix("# ").trim(), bold = true, size = 24, color = "16324F"))
+                        line.startsWith("• ") || line.startsWith("- ") -> append(p("• ${line.drop(2).trim()}", size = 20))
+                        line.isNotEmpty() -> append(p(line, size = 20))
+                    }
+                }
+            }
+
             append("</w:body></w:document>")
         }
     }

@@ -51,6 +51,7 @@ import com.propertyvaluerpro.app.data.models.CurrencyFormatter
 import com.propertyvaluerpro.app.data.models.ValuationProject
 import com.propertyvaluerpro.app.ui.components.InterstitialAdDialog
 import com.propertyvaluerpro.app.ui.components.LiveCalculationCard
+import com.propertyvaluerpro.app.ui.components.DossierPreviewSheet
 import com.propertyvaluerpro.app.ui.components.ResponsiveWorkflowScaffold
 import com.propertyvaluerpro.app.ui.components.SectionCard
 import com.propertyvaluerpro.app.ui.theme.AppColors
@@ -73,6 +74,15 @@ fun FinalReviewScreen(
     val usage = uiState.usageState
 
     var showInterstitial by remember { mutableStateOf(false) }
+    var showStyleSpec by remember { mutableStateOf(false) }
+
+    if (showStyleSpec) {
+        DossierPreviewSheet(
+            markdown = profile.reportStyleSpecMd,
+            title = "Learned Report Style Spec (.md)",
+            onDismiss = { showStyleSpec = false },
+        )
+    }
 
     if (showInterstitial) {
         InterstitialAdDialog(
