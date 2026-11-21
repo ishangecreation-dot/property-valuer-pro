@@ -25,7 +25,9 @@ object AppColors {
     val Background = Color(0xFFF5F7FA)
     val Cards = Color(0xFFFFFFFF)
     val MainText = Color(0xFF25313D)
+    val TextDark = MainText
     val SecondaryText = Color(0xFF718096)
+    val NeutralGray = SecondaryText
     val Borders = Color(0xFFE2E8F0)
     val Warning = Color(0xFFE9A23B)
     val Error = Color(0xFFD64545)

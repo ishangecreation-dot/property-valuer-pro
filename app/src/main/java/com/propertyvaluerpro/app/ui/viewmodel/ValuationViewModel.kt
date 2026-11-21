@@ -94,10 +94,10 @@ class ValuationViewModel(application: Application) : AndroidViewModel(applicatio
                     )
                     _uiState.update { it.copy(firebaseUser = userProfile) }
                     if (userProfile.apiKey.isNotBlank()) {
-                        secureStorage.setAiApiKey(userProfile.apiKey)
+                        secureStorage.saveAiApiKey(userProfile.apiKey)
                     }
                     if (userProfile.apiModel.isNotBlank()) {
-                        secureStorage.setAiProvider(userProfile.apiModel)
+                        secureStorage.saveAiProvider(userProfile.apiModel)
                     }
                 } else {
                     _uiState.update { it.copy(firebaseUser = null) }
@@ -559,8 +559,8 @@ class ValuationViewModel(application: Application) : AndroidViewModel(applicatio
             firebaseService.signInWithGoogle(account)
                 .onSuccess { userProfile ->
                     _uiState.update { it.copy(firebaseUser = userProfile, isGoogleSigningIn = false) }
-                    if (userProfile.apiKey.isNotBlank()) secureStorage.setAiApiKey(userProfile.apiKey)
-                    if (userProfile.apiModel.isNotBlank()) secureStorage.setAiProvider(userProfile.apiModel)
+                    if (userProfile.apiKey.isNotBlank()) secureStorage.saveAiApiKey(userProfile.apiKey)
+                    if (userProfile.apiModel.isNotBlank()) secureStorage.saveAiProvider(userProfile.apiModel)
                     showMessage("Signed in successfully as ${userProfile.name} (${userProfile.role.uppercase()})")
                 }
                 .onFailure { error ->
@@ -576,8 +576,8 @@ class ValuationViewModel(application: Application) : AndroidViewModel(applicatio
             firebaseService.manualSignIn(email, displayName)
                 .onSuccess { userProfile ->
                     _uiState.update { it.copy(firebaseUser = userProfile, isGoogleSigningIn = false) }
-                    if (userProfile.apiKey.isNotBlank()) secureStorage.setAiApiKey(userProfile.apiKey)
-                    if (userProfile.apiModel.isNotBlank()) secureStorage.setAiProvider(userProfile.apiModel)
+                    if (userProfile.apiKey.isNotBlank()) secureStorage.saveAiApiKey(userProfile.apiKey)
+                    if (userProfile.apiModel.isNotBlank()) secureStorage.saveAiProvider(userProfile.apiModel)
                     showMessage("Signed in as ${userProfile.name} (${userProfile.role.uppercase()})")
                 }
                 .onFailure { error ->
