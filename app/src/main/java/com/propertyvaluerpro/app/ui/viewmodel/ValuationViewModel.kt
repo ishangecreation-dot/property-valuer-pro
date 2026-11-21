@@ -684,8 +684,6 @@ class ValuationViewModel(application: Application) : AndroidViewModel(applicatio
                 }
         }
     }
-        }
-    }
 
     fun verifyLicenseKey(key: String): Boolean {
         val ok = repository.verifyAndApplyLicense(key)
